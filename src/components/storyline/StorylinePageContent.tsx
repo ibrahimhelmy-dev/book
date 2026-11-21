@@ -3,12 +3,16 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import type { BookQuote, BookTable, IdeaStep, LessonStoryline } from "@/types/storyline";
+import type { SimulatorMeta } from "@/types";
+import { LessonSimulators } from "../simulators/LessonSimulators";
 import { ArrowDown, ArrowRight, BookOpen, Compass, Flag, HelpCircle } from "lucide-react";
 
 interface Props {
   storyline: LessonStoryline;
   /** Route of the lesson this storyline belongs to. */
   lessonUrl: string;
+  /** The lesson's interactive lab simulators, shown after the wrap-up. */
+  simulators?: SimulatorMeta[];
 }
 
 function Paragraphs({ text, className }: { text: string; className?: string }) {
@@ -159,7 +163,7 @@ function Bridge({ text }: { text: string }) {
   );
 }
 
-export function StorylinePageContent({ storyline, lessonUrl }: Props) {
+export function StorylinePageContent({ storyline, lessonUrl, simulators = [] }: Props) {
   const [readingProgress, setReadingProgress] = useState(0);
   const lessonHref = lessonUrl;
   const total = storyline.steps.length;
@@ -305,6 +309,8 @@ export function StorylinePageContent({ storyline, lessonUrl }: Props) {
             <span>ارجع لنص الدرس وحل تدريباته</span>
           </Link>
         </section>
+
+        <LessonSimulators simulators={simulators} />
       </main>
     </div>
   );

@@ -12,6 +12,19 @@ test("exams page shows counts and loads only the official banks on its default t
   errs.assertNone();
 });
 
+test("«تركات الامتحان» tab loads the chapter's trap file and shows the trap after answering", async ({ page }) => {
+  const errs = trackPageErrors(page);
+  const requests = trackRequests(page);
+  await page.goto(part("exams/"));
+  await page.getByRole("tab", { name: /تركات الامتحان/ }).click();
+  await expect(page.getByText(/سؤال 1 من \d+/)).toBeVisible();
+  expect(requests.some((u) => /\/data\/.+\/traps\/chapter-3\.json/.test(u))).toBeTruthy();
+  expect(requests.filter((u) => /\/data\/.+\/practice\//.test(u))).toEqual([]);
+  await page.getByRole("button", { name: /^أ/ }).first().click();
+  await expect(page.getByText("🪤 الفخ:", { exact: false }).first()).toBeVisible();
+  errs.assertNone();
+});
+
 test("glossary search normalises Arabic (الامن matches الأمن)", async ({ page }) => {
   const errs = trackPageErrors(page);
   await page.goto(part("glossary/"));

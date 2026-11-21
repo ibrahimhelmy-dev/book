@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import type { Lesson, CalloutBox, GlossaryTerm, SimulatorMeta } from "@/types";
-import type { NavLesson } from "@/types/catalog";
-import { dataUrl, lessonHref } from "@/content/paths";
+import type { Lesson, CalloutBox } from "@/types";
+import { dataUrl } from "@/content/paths";
 import { usePart } from "@/components/layout/PartProvider";
 import { useJson } from "@/lib/fetch-json";
 import type { EnglishLesson } from "@/types/english";
@@ -11,9 +10,8 @@ import { EnglishSectionText } from "./EnglishSectionText";
 import type { CompanionLink } from "../quiz/LessonQuestionBanks";
 import dynamic from "next/dynamic";
 import { LessonHeader, type LessonFontSize } from "./LessonHeader";
-import { ThinkLikeEngineer } from "./ThinkLikeEngineer";
-import { SolvedExampleAccordion } from "./SolvedExampleAccordion";
-import { LessonConceptMap } from "./LessonConceptMap";
+import { LessonReviewTab, hasReviewContent } from "./LessonReviewTab";
+import { KeyQuestionAnswer } from "./KeyQuestionAnswer";
 import { SectionImageViewer } from "./SectionImageViewer";
 import { ComponentErrorBoundary } from "../common/ComponentErrorBoundary";
 import { topLevelSections } from "@/lib/sections";
@@ -53,10 +51,6 @@ const EssayQuestionsViewer = dynamic(
   () => retryDynamicImport(() => import("../quiz/EssayQuestionsViewer").then((mod) => mod.EssayQuestionsViewer)),
   { ssr: false }
 );
-const SimulatorRenderer = dynamic(
-  () => retryDynamicImport(() => import("../simulators/SimulatorRenderer").then((mod) => mod.SimulatorRenderer)),
-  { ssr: false }
-);
 const LessonPresentationView = dynamic(
   () => retryDynamicImport(() => import("../presentation/LessonPresentationView").then((mod) => mod.LessonPresentationView)),
   {
@@ -71,8 +65,7 @@ const LessonPresentationView = dynamic(
     ),
   }
 );
-import { HelpCircle, Sparkles, Lightbulb, CheckSquare, BookOpen, AlertCircle, FileCheck, ArrowLeft, ArrowRight, PenTool, Brain, ChevronRight, ChevronDown, ChevronUp, Award, BookmarkCheck, CheckCircle, Type } from "lucide-react";
-import Link from "next/link";
+import { Sparkles, Lightbulb, BookOpen, AlertCircle, ArrowRight, PenTool, Brain, Award, BookmarkCheck, Type } from "lucide-react";
 import { EyeComfortText, formatInlineText } from "../common/EyeComfortText";
 import { getAssetPath } from "@/lib/utils";
 
@@ -81,15 +74,15 @@ export interface LessonQuizSummary {
   officialCount: number;
   deepCount: number;
   deepCountsBySection: Record<string, number>;
+  /** «تركات امتحان» for this lesson, shown in «فهم» as their own difficulty level. */
+  trapCount: number;
   companion: CompanionLink | null;
 }
 
+type QuizSubTab = "review" | "book" | "official" | "comprehension";
+
 interface Props {
   lesson: Lesson;
-  nextLesson?: NavLesson;
-  prevLesson?: NavLesson;
-  simulators: SimulatorMeta[];
-  glossary: GlossaryTerm[];
   quiz: LessonQuizSummary;
 }
 
@@ -203,7 +196,7 @@ const subHeadingSize: Record<LessonFontSize, string> = {
   normal: "text-base sm:text-lg",
 };
 
-export function LessonContent({ lesson, nextLesson, prevLesson, simulators: lessonSimulators, glossary, quiz }: Props) {
+export function LessonContent({ lesson, quiz }: Props) {
   const { key: partKey, englishLessonIds } = usePart();
   const [activeTab, setActiveTab] = useState<"lesson" | "quiz">("lesson");
 
@@ -224,12 +217,8 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
   const english = useJson<EnglishLesson>(
     bilingual && hasEnglish ? dataUrl(partKey, `english/${lesson.id}.json`) : null
   );
-  const [quizSubTab, setQuizSubTab] = useState<"official" | "textbook" | "essay" | "comprehension">("official");
+  const [quizSubTab, setQuizSubTab] = useState<QuizSubTab>(() => (hasReviewContent(lesson) ? "review" : "book"));
   const [isPresentationOpen, setIsPresentationOpen] = useState<boolean>(false);
-  const [isLessonHeaderOpen, setIsLessonHeaderOpen] = useState<boolean>(false);
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState<boolean>(false);
-  const [isEngineerOpen, setIsEngineerOpen] = useState<boolean>(false);
-  const [isClosureRecapOpen, setIsClosureRecapOpen] = useState<boolean>(false);
   const [fontSize, setFontSize] = useState<LessonFontSize>("normal");
 
   // Floating Toast for Font Size Feedback
@@ -420,18 +409,10 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
 
   // Reset optional accordions on lesson switch so they remain closed by default
   React.useEffect(() => {
-    setIsSimulatorOpen(false);
-    setIsEngineerOpen(false);
-    setIsClosureRecapOpen(false);
+    setQuizSubTab(hasReviewContent(lesson) ? "review" : "book");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lesson.id]);
 
-  const [selectedSimId, setSelectedSimId] = useState<string>("");
-
-  React.useEffect(() => {
-    if (lessonSimulators.length > 0) {
-      setSelectedSimId(lessonSimulators[0].id);
-    }
-  }, [lessonSimulators]);
 
   // Official booklet + deep question counts come from the server; banks load when their tab opens
   const sectionQuestionsCount = quiz.deepCountsBySection;
@@ -457,25 +438,24 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
     quiz.officialCount +
     textbookQuestions.length +
     essayQuestions.length +
-    quiz.deepCount;
+    quiz.deepCount +
+    quiz.trapCount;
 
-  const hasClosureContent = Boolean(
-    lesson.appliedTask ||
-    lesson.solvedExample ||
-    lesson.mainQuestionAnswer ||
-    lesson.summary ||
-    lesson.challengeYourself?.reflect ||
-    lesson.challengeYourself?.challenge
-  );
+  // «فهم» = the lesson's deep questions + its «تركات امتحان» (a difficulty level inside the same viewer).
+  const comprehensionCount = quiz.deepCount + quiz.trapCount;
 
-  const closureItemsCount = [
-    lesson.appliedTask ? 1 : 0,
-    lesson.solvedExample ? 1 : 0,
-    lesson.mainQuestionAnswer ? 1 : 0,
-    lesson.summary ? 1 : 0,
-    lesson.challengeYourself?.reflect ? 1 : 0,
-    lesson.challengeYourself?.challenge ? 1 : 0,
-  ].reduce((a, b) => a + b, 0);
+  const bookQuestionsCount = textbookQuestions.length + essayQuestions.length;
+
+  // Question tabs in study order: review what the lesson says, then the book's own questions,
+  // then the official assessments booklet, then the deeper comprehension bank.
+  const quizTabs: { id: QuizSubTab; label: string; Icon: typeof Award; active: string }[] = [
+    ...(hasReviewContent(lesson)
+      ? [{ id: "review" as const, label: "مراجعة", Icon: BookmarkCheck, active: "bg-indigo-600 shadow-indigo-600/30" }]
+      : []),
+    { id: "book", label: `الكتاب (${bookQuestionsCount})`, Icon: BookOpen, active: "bg-emerald-600 shadow-emerald-600/30" },
+    { id: "official", label: `التقييمات (${quiz.officialCount})`, Icon: Award, active: "bg-amber-600 shadow-amber-600/30" },
+    { id: "comprehension", label: `فهم (${comprehensionCount})`, Icon: Brain, active: "bg-purple-600 shadow-purple-600/30" },
+  ];
 
   const quizSectionRef = React.useRef<HTMLDivElement>(null);
 
@@ -503,45 +483,8 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
 
   return (
     <article className={`max-w-5xl mx-auto w-full max-w-full overflow-x-clip min-w-0 ${isQuizMode ? "px-3 sm:px-4 py-3 sm:py-8" : "px-4 py-8"}`}>
-      {/* Mobile Quiz Focus Mode: Compact Bar when practicing questions */}
-      {isQuizMode && (
-        <div className="md:hidden mb-2.5 p-2 px-3 bg-slate-900/95 border border-slate-800 rounded-2xl flex items-center justify-between shadow-md">
-          <button
-            type="button"
-            onClick={() => setActiveTab("lesson")}
-            className="flex items-center gap-1.5 min-w-0 text-right cursor-pointer group"
-            title="العودة لشرح الدرس"
-          >
-            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white shrink-0" />
-            <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-indigo-600/30 text-indigo-300 font-mono font-black shrink-0">
-              {lesson.number}
-            </span>
-            <span className="text-xs font-bold text-white truncate max-w-[130px] xs:max-w-[170px]">
-              {lesson.title}
-            </span>
-          </button>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab("lesson")}
-              className="text-[11px] font-bold text-indigo-300 hover:text-white px-2 py-1 rounded-lg bg-indigo-950/60 border border-indigo-500/30 flex items-center gap-1 cursor-pointer transition-colors"
-            >
-              <span>الدرس 📖</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsLessonHeaderOpen((prev) => !prev)}
-              className="text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg bg-slate-800/90 border border-slate-700/60 flex items-center gap-1 cursor-pointer transition-colors"
-            >
-              <span>{isLessonHeaderOpen ? "طي ▴" : "الأهداف ▾"}</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Lesson Header with TTS, Bookmark, Objectives, and Quiz Toggle (Always visible on desktop; collapsible on mobile in quiz mode) */}
-      <div className={isQuizMode && !isLessonHeaderOpen ? "hidden md:block" : "block"}>
+      {/* Lesson header (title, intro, objectives) — only on the lesson view; the questions view stays minimal */}
+      {!isQuizMode && (
         <LessonHeader
           lesson={lesson}
           onOpenPresentation={() => setIsPresentationOpen(true)}
@@ -551,7 +494,7 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
           fontSize={fontSize}
           onFontSizeChange={handleFontSizeChange}
         />
-      </div>
+      )}
 
       {/* Fullscreen Presentation Modal View */}
       {isPresentationOpen && (
@@ -789,633 +732,90 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
             ))}
           </div>
 
-          {/* Interactive Lesson Schematic & Concept Map */}
-          {lesson.keyConcepts && lesson.keyConcepts.length > 0 && (
-            <LessonConceptMap lesson={lesson} glossary={glossary} />
-          )}
-
-
-
-          {/* Optional Enrichment Section at End of Lesson (Hidden/Collapsed by default) */}
-          {(lessonSimulators.length > 0 || lesson.engineerChallenge) && (
-            <div className="pt-6 border-t border-slate-800/80 space-y-3">
-              <div className="flex items-center justify-between text-xs px-1">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <span className="w-2 h-2 rounded-full bg-purple-500" />
-                  <span className="font-bold text-slate-300">أنشطة وتطبيقات إثرائية (اختيارية)</span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25 font-mono">
-                    ({(lessonSimulators.length > 0 ? lessonSimulators.length : 0) + (lesson.engineerChallenge ? 1 : 0)} أنشطة)
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-500">مغلقة افتراضياً — اضغط للاستكشاف</span>
-              </div>
-
-              {/* 1. Collapsible Interactive Simulators */}
-              {lessonSimulators.length > 0 && (
-                <div className="border border-slate-800 hover:border-purple-500/30 bg-slate-900/60 rounded-2xl overflow-hidden transition-all duration-200 shadow-md">
-                  <button
-                    type="button"
-                    onClick={() => setIsSimulatorOpen((prev) => !prev)}
-                    className="w-full p-4 sm:p-4.5 flex items-center justify-between gap-3 text-right hover:bg-slate-800/40 transition-colors cursor-pointer"
-                    aria-expanded={isSimulatorOpen}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0 text-purple-400">
-                        <Sparkles className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0 text-right">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm sm:text-base font-bold text-white">المحاكيات التفاعلية المعملية ⚡</span>
-                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">
-                            ({lessonSimulators.length} محاكيات)
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">
-                            إثرائي اختياري
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {lessonSimulators.length > 1
-                            ? `يتوفر لهذا الدرس ${lessonSimulators.length} محاكيات تفاعلية لتجربة المفاهيم عملياً`
-                            : "محاكاة تفاعلية لتجربة المفاهيم عملياً (غير مطلوب للامتحان)"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-400 text-xs shrink-0">
-                      <span className="hidden sm:inline font-medium">
-                        {isSimulatorOpen ? "إخفاء المحاكيات" : `فتح المحاكيات (${lessonSimulators.length})`}
-                      </span>
-                      {isSimulatorOpen ? (
-                        <ChevronUp className="w-5 h-5 text-purple-400 transition-transform" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5 text-slate-400 transition-transform" />
-                      )}
-                    </div>
-                  </button>
-
-                  {isSimulatorOpen && (
-                    <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-950/70 animate-fadeIn">
-                      {/* Tabs switcher if lesson has multiple simulators */}
-                      {lessonSimulators.length > 1 && (
-                        <div className="flex flex-wrap gap-2 mb-6 p-2 bg-slate-900 border border-slate-800 rounded-2xl">
-                          {lessonSimulators.map((sim, idx) => {
-                            const isSelected = (selectedSimId || lessonSimulators[0].id) === sim.id;
-                            return (
-                              <button
-                                key={sim.id}
-                                type="button"
-                                onClick={() => setSelectedSimId(sim.id)}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                                  isSelected
-                                    ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30 ring-2 ring-purple-400/40"
-                                    : "bg-slate-950/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800"
-                                }`}
-                              >
-                                <span className="font-mono text-[10px] opacity-75">#{idx + 1}</span>
-                                <span>{sim.title.replace(/^\d+\.\s*/, "")}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <ComponentErrorBoundary fallbackTitle="تعذر تشغيل المحاكي التفاعلي">
-                        <SimulatorRenderer simulatorId={selectedSimId || lessonSimulators[0].id} />
-                      </ComponentErrorBoundary>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 2. Collapsible Think Like an Engineer */}
-              {lesson.engineerChallenge && (
-                <div className="border border-slate-800 hover:border-amber-500/30 bg-slate-900/60 rounded-2xl overflow-hidden transition-all duration-200 shadow-md">
-                  <button
-                    type="button"
-                    onClick={() => setIsEngineerOpen((prev) => !prev)}
-                    className="w-full p-4 sm:p-4.5 flex items-center justify-between gap-3 text-right hover:bg-slate-800/40 transition-colors cursor-pointer"
-                    aria-expanded={isEngineerOpen}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-400">
-                        <Lightbulb className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0 text-right">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm sm:text-base font-bold text-white">فكر كمهندس ⚙️ (التحدي الهندسي)</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                            إثرائي اختياري
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-0.5 truncate max-w-md">
-                          {lesson.engineerChallenge.title || "تطبيق التفكير الهندسي وحل المشكلات"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-400 text-xs shrink-0">
-                      <span className="hidden sm:inline font-medium">
-                        {isEngineerOpen ? "إخفاء التحدي" : "فتح التحدي"}
-                      </span>
-                      {isEngineerOpen ? (
-                        <ChevronUp className="w-5 h-5 text-amber-400 transition-transform" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5 text-slate-400 transition-transform" />
-                      )}
-                    </div>
-                  </button>
-
-                  {isEngineerOpen && (
-                    <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-950/70 animate-fadeIn">
-                      <ThinkLikeEngineer challenge={lesson.engineerChallenge} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Lesson Closure, Applied Practice & Solved Examples (Consolidated, Collapsed by Default) */}
-          {hasClosureContent && (
-            <div className="pt-4 border-t border-slate-800/80 space-y-3">
-              <div className="flex items-center justify-between text-xs px-1">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                  <span className="font-bold text-slate-300">خلاصة وتطبيقات الدرس والحلول النموذجية</span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/25 font-mono">
-                    ({closureItemsCount} أقسام)
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-500">مغلق افتراضياً — اضغط للاستعراض</span>
-              </div>
-
-              <div className="border border-slate-800 hover:border-indigo-500/40 bg-slate-900/60 rounded-3xl overflow-hidden transition-all duration-200 shadow-xl">
-                <button
-                  type="button"
-                  onClick={() => setIsClosureRecapOpen((prev) => !prev)}
-                  className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right hover:bg-slate-800/40 transition-colors cursor-pointer"
-                  aria-expanded={isClosureRecapOpen}
-                >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center shrink-0 text-indigo-400">
-                      <BookmarkCheck className="w-6 h-6" />
-                    </div>
-                    <div className="min-w-0 text-right">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm sm:text-base font-bold text-white">
-                          خلاصة الدرس، الأنشطة التطبيقية والأمثلة المحلولة 📌
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
-                          ({closureItemsCount} أقسام)
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                          مغلق افتراضياً
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1 line-clamp-1">
-                        طبّق ما تعلمته • التدريب والحل النموذجي • مثال محلول من الكتاب • إجابة السؤال الرئيسي • خلاصة الدرس • تأمل وتحدّ
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-400 text-xs shrink-0">
-                    <span className="hidden sm:inline font-medium">
-                      {isClosureRecapOpen ? "إخفاء القسم" : `عرض الأقسام (${closureItemsCount})`}
-                    </span>
-                    {isClosureRecapOpen ? (
-                      <ChevronUp className="w-5 h-5 text-indigo-400 transition-transform" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-slate-400 transition-transform" />
-                    )}
-                  </div>
-                </button>
-
-                {isClosureRecapOpen && (
-                  <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-950/80 animate-fadeIn space-y-6">
-                    {/* 1. Applied Task (طبّق ما تعلمته) */}
-                    {lesson.appliedTask && (
-                      <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 sm:p-6 text-white shadow-lg space-y-4">
-                        <div className="flex items-center justify-between gap-2 flex-wrap border-b border-slate-800/80 pb-3">
-                          <div className="flex items-center gap-2.5 font-bold text-sm text-indigo-400">
-                            <FileCheck className="w-5 h-5 text-indigo-400" />
-                            <span>{lesson.appliedTask.title || "طبّق ما تعلمته"}</span>
-                          </div>
-                          <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
-                            تطبيق عملي
-                          </span>
-                        </div>
-
-                        {lesson.appliedTask.scenario && (
-                          <div
-                            className={`p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/80 leading-relaxed transition-all duration-200 ${
-                              fontSize === "5xlarge"
-                                ? "text-2xl sm:text-3xl text-slate-100 font-semibold"
-                                : fontSize === "4xlarge"
-                                ? "text-xl sm:text-2xl text-slate-100 font-medium"
-                                : fontSize === "3xlarge" || fontSize === "2xlarge" || fontSize === "xlarge"
-                                ? "text-base sm:text-lg text-slate-100 font-medium"
-                                : fontSize === "large"
-                                ? "text-sm sm:text-base text-slate-200"
-                                : "text-xs text-slate-300"
-                            }`}
-                          >
-                            <span className="font-bold text-indigo-400 ml-1">السيناريو:</span>
-                            {lesson.appliedTask.scenario}
-                          </div>
-                        )}
-
-                        <div className="space-y-1.5">
-                          <span
-                            className={`font-bold text-slate-300 block transition-all duration-200 ${
-                              fontSize === "5xlarge"
-                                ? "text-2xl"
-                                : fontSize === "4xlarge"
-                                ? "text-xl"
-                                : fontSize === "3xlarge" || fontSize === "2xlarge" || fontSize === "xlarge"
-                                ? "text-base"
-                                : fontSize === "large"
-                                ? "text-sm"
-                                : "text-xs"
-                            }`}
-                          >
-                            التدريب المطلوب:
-                          </span>
-                          <p
-                            className={`font-semibold text-slate-200 leading-relaxed transition-all duration-200 ${
-                              fontSize === "5xlarge"
-                                ? "text-3xl sm:text-4xl font-black"
-                                : fontSize === "4xlarge"
-                                ? "text-2xl sm:text-3xl font-black"
-                                : fontSize === "3xlarge"
-                                ? "text-xl sm:text-2xl font-black"
-                                : fontSize === "2xlarge"
-                                ? "text-lg sm:text-xl font-bold"
-                                : fontSize === "xlarge"
-                                ? "text-lg sm:text-xl font-bold"
-                                : fontSize === "large"
-                                ? "text-base sm:text-lg"
-                                : "text-xs sm:text-sm"
-                            }`}
-                          >
-                            {lesson.appliedTask.prompt}
-                          </p>
-                        </div>
-
-                        {lesson.appliedTask.sampleAnswer && (
-                          <div
-                            className={`p-4 bg-emerald-950/25 rounded-xl border border-emerald-500/30 leading-relaxed text-slate-300 shadow-inner transition-all duration-200 ${
-                              fontSize === "5xlarge"
-                                ? "text-2xl sm:text-3xl text-slate-100"
-                                : fontSize === "4xlarge"
-                                ? "text-xl sm:text-2xl text-slate-100"
-                                : fontSize === "3xlarge" || fontSize === "2xlarge" || fontSize === "xlarge"
-                                ? "text-base sm:text-lg text-slate-100"
-                                : fontSize === "large"
-                                ? "text-sm sm:text-base text-slate-200"
-                                : "text-xs text-slate-300"
-                            }`}
-                          >
-                            <strong className="text-emerald-400 flex items-center gap-1.5 font-bold mb-1.5">
-                              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                              <span>الحل النموذجي (نموذج الإجابة المقترحة):</span>
-                            </strong>
-                            <p className="text-slate-300 leading-relaxed">{lesson.appliedTask.sampleAnswer}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 2. Solved Examples (مثال محلول من الكتاب المدرسي / التدريب والحل النموذجي) */}
-                    {lesson.solvedExample && (
-                      <div className="rounded-2xl overflow-hidden">
-                        <SolvedExampleAccordion example={lesson.solvedExample} fontSize={fontSize} />
-                      </div>
-                    )}
-
-                    {/* 3. Main Question Official Answer (إجابة السؤال الرئيسي المعتمدة) */}
-                    {lesson.mainQuestionAnswer && (
-                      <div className="bg-slate-900 border border-indigo-500/25 rounded-2xl p-5 sm:p-6 text-white space-y-3 shadow-md">
-                        <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
-                          <HelpCircle className="w-5 h-5 text-indigo-400 shrink-0" />
-                          <span>إجابة السؤال الرئيسي المعتمدة:</span>
-                        </div>
-                        {lesson.keyQuestion && (
-                          <div
-                            className={`p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl leading-relaxed transition-all duration-200 ${
-                              fontSize === "5xlarge"
-                                ? "text-2xl sm:text-3xl text-amber-50 font-semibold"
-                                : fontSize === "4xlarge"
-                                ? "text-xl sm:text-2xl text-amber-50 font-medium"
-                                : fontSize === "3xlarge" || fontSize === "2xlarge" || fontSize === "xlarge"
-                                ? "text-base sm:text-lg text-amber-50 font-medium"
-                                : fontSize === "large"
-                                ? "text-sm sm:text-base text-amber-100"
-                                : "text-xs text-amber-200"
-                            }`}
-                          >
-                            <span className="font-bold text-amber-400 ml-1">السؤال الرئيسي:</span>
-                            <span>{lesson.keyQuestion}</span>
-                          </div>
-                        )}
-                        <p
-                          className={`leading-relaxed bg-slate-950/60 p-4 rounded-xl border border-slate-800 transition-all duration-200 ${
-                            fontSize === "5xlarge"
-                              ? "text-3xl sm:text-4xl md:text-5xl text-white leading-loose font-bold"
-                              : fontSize === "4xlarge"
-                              ? "text-2xl sm:text-3xl md:text-4xl text-slate-100 leading-loose font-semibold"
-                              : fontSize === "3xlarge"
-                              ? "text-xl sm:text-2xl md:text-3xl text-slate-100 leading-loose font-semibold"
-                              : fontSize === "2xlarge"
-                              ? "text-lg sm:text-xl md:text-2xl text-slate-100 leading-loose font-medium"
-                              : fontSize === "xlarge"
-                              ? "text-lg sm:text-xl md:text-2xl text-slate-100 leading-loose font-medium"
-                              : fontSize === "large"
-                              ? "text-base sm:text-lg text-slate-200 leading-loose"
-                              : "text-xs sm:text-sm text-slate-300"
-                          }`}
-                        >
-                          {lesson.mainQuestionAnswer}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* 4. Lesson Summary & Flashcard Takeaway (⭐ خلاصة وتذكرة الدرس) */}
-                    {lesson.summary && (
-                      <div className="bg-slate-950 border border-amber-500/30 rounded-2xl p-5 sm:p-6 text-white shadow-md space-y-3">
-                        <div className="flex items-center gap-2 font-bold text-sm sm:text-base text-amber-400">
-                          <Sparkles className="w-5 h-5 text-amber-400 shrink-0" />
-                          <span>⭐ خلاصة وتذكرة الدرس:</span>
-                        </div>
-                        {Array.isArray(lesson.summary) ? (
-                          <ul
-                            className={`space-y-2.5 transition-all duration-200 ${
-                              fontSize === "5xlarge"
-                                ? "text-3xl sm:text-4xl text-slate-100 leading-loose font-bold"
-                                : fontSize === "4xlarge"
-                                ? "text-2xl sm:text-3xl text-slate-100 leading-loose font-semibold"
-                                : fontSize === "3xlarge"
-                                ? "text-xl sm:text-2xl text-slate-100 leading-loose font-semibold"
-                                : fontSize === "2xlarge"
-                                ? "text-lg sm:text-xl text-slate-100 leading-loose font-medium"
-                                : fontSize === "xlarge"
-                                ? "text-lg sm:text-xl text-slate-100 leading-loose font-medium"
-                                : fontSize === "large"
-                                ? "text-base sm:text-lg text-slate-200 leading-loose"
-                                : "text-xs sm:text-sm text-slate-300"
-                            }`}
-                          >
-                            {lesson.summary.map((sumItem, i) => (
-                              <li key={i} className="flex items-start gap-2.5 bg-slate-900/60 p-3.5 rounded-xl border border-slate-800/80">
-                                <span className="text-amber-400 font-bold text-base leading-none">•</span>
-                                <span className="leading-relaxed">{sumItem}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p
-                            className={`leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800 transition-all duration-200 ${
-                              fontSize === "5xlarge"
-                                ? "text-3xl sm:text-4xl text-slate-100 leading-loose font-bold"
-                                : fontSize === "4xlarge"
-                                ? "text-2xl sm:text-3xl text-slate-100 leading-loose font-semibold"
-                                : fontSize === "3xlarge"
-                                ? "text-xl sm:text-2xl text-slate-100 leading-loose font-semibold"
-                                : fontSize === "2xlarge"
-                                ? "text-lg sm:text-xl text-slate-100 leading-loose font-medium"
-                                : fontSize === "xlarge"
-                                ? "text-lg sm:text-xl text-slate-100 leading-loose font-medium"
-                                : fontSize === "large"
-                                ? "text-base sm:text-lg text-slate-200 leading-loose"
-                                : "text-xs sm:text-sm text-slate-300"
-                            }`}
-                          >
-                            {lesson.summary}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 5 & 6. Challenge Yourself (⭐ تأمل ذاتي & ⚡ تحدّ نفسك) */}
-                    {lesson.challengeYourself && (lesson.challengeYourself.reflect || lesson.challengeYourself.challenge) && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {lesson.challengeYourself.reflect && (
-                          <div className="p-5 bg-slate-900 border border-purple-500/30 rounded-2xl shadow-md space-y-2">
-                            <div className="flex items-center gap-2 text-xs font-bold text-purple-400">
-                              <Lightbulb className="w-4 h-4 text-purple-400 shrink-0" />
-                              <span>⭐ تأمل ذاتي:</span>
-                            </div>
-                            <p
-                              className={`leading-relaxed bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 transition-all duration-200 ${
-                                fontSize === "5xlarge"
-                                  ? "text-2xl sm:text-3xl text-slate-100 leading-loose font-semibold"
-                                  : fontSize === "4xlarge"
-                                  ? "text-xl sm:text-2xl text-slate-100 leading-loose font-medium"
-                                  : fontSize === "3xlarge" || fontSize === "2xlarge" || fontSize === "xlarge"
-                                  ? "text-base sm:text-lg text-slate-100 leading-loose font-medium"
-                                  : fontSize === "large"
-                                  ? "text-sm sm:text-base text-slate-200 leading-loose"
-                                  : "text-xs sm:text-sm text-slate-300"
-                              }`}
-                            >
-                              {lesson.challengeYourself.reflect}
-                            </p>
-                          </div>
-                        )}
-                        {lesson.challengeYourself.challenge && (
-                          <div className="p-5 bg-slate-900 border border-pink-500/30 rounded-2xl shadow-md space-y-2">
-                            <div className="flex items-center gap-2 text-xs font-bold text-pink-400">
-                              <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
-                              <span>⚡ تحدّ نفسك:</span>
-                            </div>
-                            <p
-                              className={`leading-relaxed bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 transition-all duration-200 ${
-                                fontSize === "5xlarge"
-                                  ? "text-2xl sm:text-3xl text-slate-100 leading-loose font-semibold"
-                                  : fontSize === "4xlarge"
-                                  ? "text-xl sm:text-2xl text-slate-100 leading-loose font-medium"
-                                  : fontSize === "3xlarge" || fontSize === "2xlarge" || fontSize === "xlarge"
-                                  ? "text-base sm:text-lg text-slate-100 leading-loose font-medium"
-                                  : fontSize === "large"
-                                  ? "text-sm sm:text-base text-slate-200 leading-loose"
-                                  : "text-xs sm:text-sm text-slate-300"
-                              }`}
-                            >
-                              {lesson.challengeYourself.challenge}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Bottom of Lesson: Practice, Essay & Comprehension Hub Callout */}
-          <div className="p-6 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-3xl space-y-4 shadow-xl">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                  <CheckSquare className="w-6 h-6 text-indigo-400" />
-                </div>
-                <div>
-                  <h4 className="text-sm sm:text-base font-extrabold text-white">
-                    جاهز للتدريب واختبار فهمك للدرس؟ 📝
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    اختر القسم الذي ترغب بالتدرب عليه مباشرة (3 أقسام منظمة):
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
-              {quiz.officialCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("quiz");
-                    setQuizSubTab("official");
-                  }}
-                  className="p-3.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/40 text-amber-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
-                >
-                  <Award className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>التقييمات الرسمية ({quiz.officialCount}) 🏛️</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("quiz");
-                  setQuizSubTab("textbook");
-                }}
-                className="p-3.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/30 text-emerald-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
-              >
-                <BookOpen className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>أسئلة من الكتاب ({textbookQuestions.length}) 📘</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("quiz");
-                  setQuizSubTab("essay");
-                }}
-                className="p-3.5 rounded-xl bg-blue-950/40 hover:bg-blue-900/60 border border-blue-500/30 text-blue-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
-              >
-                <PenTool className="w-4 h-4 text-blue-400 shrink-0" />
-                <span>أسئلة مقالية ({essayQuestions.length}) ✍️</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("quiz");
-                  setQuizSubTab("comprehension");
-                }}
-                className="p-3.5 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/30 text-purple-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
-              >
-                <Brain className="w-4 h-4 text-purple-400 shrink-0" />
-                <span>أسئلة الفهم ({quiz.deepCount}) 🧠</span>
-              </button>
-            </div>
-          </div>
+          {/* The key question and the book's answer, after the lesson has been read */}
+          {lesson.keyQuestion && <KeyQuestionAnswer keyQuestion={lesson.keyQuestion} answer={lesson.mainQuestionAnswer} />}
         </div>
       )}
 
-      {/* Standalone Quiz & Exercise Hub (Enhanced: Exactly 4 Clear Tabs) */}
+      {/* Questions view: review + question banks */}
       {activeTab === "quiz" && (
-        <div ref={quizSectionRef} className="space-y-4 sm:space-y-6 mobile-quiz-scroll-anchor">
-          {/* Quick Return to Lesson Bar */}
-          <div className="flex items-center justify-between gap-3 bg-slate-900/90 border border-slate-800/80 rounded-2xl px-4 py-2.5 shadow-md">
-            <button
-              type="button"
-              onClick={() => setActiveTab("lesson")}
-              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-indigo-300 hover:text-white transition-colors cursor-pointer group"
-            >
-              <ArrowRight className="w-4 h-4 text-indigo-400 group-hover:-translate-x-0.5 transition-transform" />
-              <span>العودة إلى شرح الدرس 📖</span>
-            </button>
-            <span className="text-xs text-slate-400 font-medium">
-              بنك الأسئلة والتمارين ({totalQuestionsCount})
+        <div ref={quizSectionRef} className={`space-y-4 sm:space-y-6 mobile-quiz-scroll-anchor quiz-font-${fontSize}`}>
+          {/* One compact bar: back to the lesson + which lesson this is */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("lesson")}
+            title="العودة إلى شرح الدرس"
+            className="w-full flex items-center gap-2 bg-slate-900/90 border border-slate-800/80 rounded-2xl px-3 sm:px-4 py-2.5 text-right cursor-pointer group hover:border-indigo-500/40 transition-colors"
+          >
+            <ArrowRight className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-indigo-600/30 text-indigo-300 font-mono font-black shrink-0">
+              {lesson.number}
             </span>
-          </div>
+            <span className="text-xs sm:text-sm font-bold text-white truncate">{lesson.title}</span>
+            <span className="mr-auto text-[11px] sm:text-xs font-bold text-indigo-300 group-hover:text-white shrink-0">شرح الدرس 📖</span>
+          </button>
 
-          {/* Exactly 4 Clear Tabs Switcher: Sleek Horizontal Segmented Control */}
+          {/* Question tabs: segmented control */}
           <div
             role="tablist"
             aria-label="أقسام الأسئلة والتمارين"
             className="h-11 sm:h-12 p-1 bg-slate-900/95 border border-slate-800 rounded-2xl flex items-center gap-1 sm:gap-1.5 shadow-lg overflow-x-auto"
           >
-            {/* 1. التقييمات الرسمية */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={quizSubTab === "official"}
-              aria-current={quizSubTab === "official" ? "page" : undefined}
-              onClick={() => setQuizSubTab("official")}
-              className={`h-full min-w-0 flex-1 px-1.5 sm:px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                quizSubTab === "official"
-                  ? "bg-amber-600 text-white shadow-md shadow-amber-600/30 font-black"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800/80"
-              }`}
-            >
-              <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 shrink-0" />
-              <span className="truncate">التقييمات الرسمية ({quiz.officialCount})</span>
-            </button>
-
-            {/* 2. أسئلة من الكتاب */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={quizSubTab === "textbook"}
-              aria-current={quizSubTab === "textbook" ? "page" : undefined}
-              onClick={() => setQuizSubTab("textbook")}
-              className={`h-full min-w-0 flex-1 px-1.5 sm:px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                quizSubTab === "textbook"
-                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-black"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800/80"
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300 shrink-0" />
-              <span className="truncate">كتاب ({textbookQuestions.length})</span>
-            </button>
-
-            {/* 3. أسئلة مقالية محتاجة كتابة */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={quizSubTab === "essay"}
-              aria-current={quizSubTab === "essay" ? "page" : undefined}
-              onClick={() => setQuizSubTab("essay")}
-              className={`h-full min-w-0 flex-1 px-1.5 sm:px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                quizSubTab === "essay"
-                  ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800/80"
-              }`}
-            >
-              <PenTool className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-300 shrink-0" />
-              <span className="truncate">مقالي ({essayQuestions.length})</span>
-            </button>
-
-            {/* 4. أسئلة الفهم */}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={quizSubTab === "comprehension"}
-              aria-current={quizSubTab === "comprehension" ? "page" : undefined}
-              onClick={() => setQuizSubTab("comprehension")}
-              className={`h-full min-w-0 flex-1 px-1.5 sm:px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                quizSubTab === "comprehension"
-                  ? "bg-purple-600 text-white shadow-md shadow-purple-600/30 font-black"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800/80"
-              }`}
-            >
-              <Brain className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-300 shrink-0" />
-              <span className="truncate">فهم ({quiz.deepCount})</span>
-            </button>
+            {quizTabs.map((t) => {
+              const selected = quizSubTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setQuizSubTab(t.id)}
+                  className={`h-full min-w-fit flex-auto px-2 sm:px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                    selected ? `${t.active} text-white shadow-md font-black` : "text-slate-400 hover:text-white hover:bg-slate-800/80"
+                  }`}
+                >
+                  <t.Icon className="hidden sm:block w-4 h-4 shrink-0" />
+                  <span className="truncate">{t.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Tab 0 Content: التقييمات الرسمية للوزارة */}
+          {/* مراجعة: summary, solved example, applied task, challenge yourself */}
+          {quizSubTab === "review" && (
+            <ComponentErrorBoundary fallbackTitle="تعذر عرض المراجعة">
+              <LessonReviewTab lesson={lesson} fontSize={fontSize} />
+            </ComponentErrorBoundary>
+          )}
+
+          {/* الكتاب: the book's objective questions, then its essay questions */}
+          {quizSubTab === "book" && (
+            <ComponentErrorBoundary fallbackTitle="تعذر تشغيل أسئلة الكتاب">
+              {bookQuestionsCount === 0 ? (
+                <EmptyBank text="لا توجد أسئلة من الكتاب لهذا الدرس." />
+              ) : (
+                <div className="space-y-6">
+                  <QuizEngine
+                    lessonId={lesson.id}
+                    questions={textbookQuestions}
+                    title="أسئلة وتمارين الكتاب المدرسي 📘"
+                    subtitle="الأسئلة الموضوعية الواردة بالكتاب (اختيار من متعدد، صواب وخطأ، أكمل الفراغ) مع التصحيح الفوري"
+                  />
+                  {essayQuestions.length > 0 && (
+                    <section className="space-y-3">
+                      <h3 className="flex items-center gap-2 text-sm sm:text-base font-bold text-blue-300 px-1">
+                        <PenTool className="w-4 h-4 shrink-0" />
+                        <span>أسئلة مقالية من الكتاب ({essayQuestions.length}) ✍️</span>
+                      </h3>
+                      <EssayQuestionsViewer lessonId={lesson.id} questions={essayQuestions} />
+                    </section>
+                  )}
+                </div>
+              )}
+            </ComponentErrorBoundary>
+          )}
+
+          {/* التقييمات الرسمية: the official assessments booklet */}
           {quizSubTab === "official" && (
             <ComponentErrorBoundary fallbackTitle="تعذر تشغيل تقييمات الوزارة الرسمية">
               {quiz.companion && quiz.officialCount > 0 ? (
@@ -1426,35 +826,14 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
             </ComponentErrorBoundary>
           )}
 
-          {/* Tab 1 Content: أسئلة من الكتاب */}
-          {quizSubTab === "textbook" && (
-            <ComponentErrorBoundary fallbackTitle="تعذر تشغيل تمارين واختبار الدرس">
-              <QuizEngine
-                lessonId={lesson.id}
-                questions={textbookQuestions}
-                title="أسئلة وتمارين الكتاب المدرسي 📘"
-                subtitle="الأسئلة الموضوعية الرسمية الواردة بالكتاب (اختيار من متعدد، صواب وخطأ، أكمل الفراغ) مع التصحيح الفوري"
-              />
-            </ComponentErrorBoundary>
-          )}
-
-          {/* Tab 2 Content: أسئلة مقالية محتاجة كتابة */}
-          {quizSubTab === "essay" && (
-            <ComponentErrorBoundary fallbackTitle="تعذر تشغيل الأسئلة المقالية">
-              <EssayQuestionsViewer
-                lessonId={lesson.id}
-                questions={essayQuestions}
-              />
-            </ComponentErrorBoundary>
-          )}
-
-          {/* Tab 3 Content: أسئلة الفهم */}
+          {/* فهم: deep comprehension questions */}
           {quizSubTab === "comprehension" && (
             <ComponentErrorBoundary fallbackTitle="تعذر تشغيل أسئلة الفهم المعمقة">
-              {quiz.deepCount > 0 ? (
+              {comprehensionCount > 0 ? (
                 <DeepQuestionsTab
                   partKey={partKey}
                   lesson={lesson}
+                  withTricks={quiz.trapCount > 0}
                   targetSectionId={selectedComprehensionSectionId}
                   onClearTargetSection={() => setSelectedComprehensionSectionId(null)}
                 />
@@ -1465,39 +844,6 @@ export function LessonContent({ lesson, nextLesson, prevLesson, simulators: less
           )}
         </div>
       )}
-
-      {/* Bottom Navigation between Lessons */}
-      <footer className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-12 pt-6 border-t border-slate-800">
-        {prevLesson ? (
-          <Link
-            href={lessonHref(partKey, prevLesson.chapterId, prevLesson.slug)}
-            className="flex-1 p-3.5 sm:p-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-right transition-all flex items-center gap-3 group"
-          >
-            <ArrowRight className="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
-            <div className="min-w-0">
-              <span className="text-[11px] text-slate-500 block">الدرس السابق ({prevLesson.number})</span>
-              <span className="text-xs sm:text-sm font-bold text-white truncate block">{prevLesson.title}</span>
-            </div>
-          </Link>
-        ) : (
-          <div className="hidden sm:block flex-1" />
-        )}
-
-        {nextLesson ? (
-          <Link
-            href={lessonHref(partKey, nextLesson.chapterId, nextLesson.slug)}
-            className="flex-1 p-3.5 sm:p-4 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-left transition-all flex items-center justify-end gap-3 group"
-          >
-            <div className="min-w-0 text-right sm:text-left">
-              <span className="text-[11px] text-slate-500 block">الدرس التالي ({nextLesson.number})</span>
-              <span className="text-xs sm:text-sm font-bold text-white truncate block">{nextLesson.title}</span>
-            </div>
-            <ArrowLeft className="w-5 h-5 text-indigo-400 group-hover:-translate-x-1 transition-transform shrink-0" />
-          </Link>
-        ) : (
-          <div className="hidden sm:block flex-1" />
-        )}
-      </footer>
 
       {/* Floating Toast for Font Size Feedback */}
       {fontToast && (

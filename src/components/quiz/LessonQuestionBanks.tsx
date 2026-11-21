@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { ClipboardCheck, Loader2, RotateCcw } from "lucide-react";
 import type { Lesson } from "@/types";
@@ -10,6 +10,7 @@ import { companionHref, dataUrl } from "@/content/paths";
 import { useJson, type JsonState } from "@/lib/fetch-json";
 import { LessonOfficialAssessments } from "./LessonOfficialAssessments";
 import { DeepComprehensionViewer } from "./DeepComprehensionViewer";
+import { trapToDeepQuestion, type TrapQuestion } from "@/lib/traps";
 
 /**
  * Question banks of a lesson are separate JSON files (public/data/<part>/…), fetched only when the
@@ -69,15 +70,36 @@ export function OfficialQuestionsTab({ partKey, lesson, companion }: { partKey: 
 export function DeepQuestionsTab({
   partKey,
   lesson,
+  withTricks = false,
   targetSectionId,
   onClearTargetSection,
 }: {
   partKey: string;
   lesson: Lesson;
+  /** Also load the chapter's «تركات امتحان» (traps/<chapterId>.json) as their own difficulty level. */
+  withTricks?: boolean;
   targetSectionId?: string | null;
   onClearTargetSection?: () => void;
 }) {
-  const state = useJson<DeepChallengingQuestion[]>(dataUrl(partKey, `deep/${lesson.number}.json`));
+  const deep = useJson<DeepChallengingQuestion[]>(dataUrl(partKey, `deep/${lesson.number}.json`));
+  const tricks = useJson<TrapQuestion[]>(withTricks ? dataUrl(partKey, `traps/${lesson.chapterId}.json`) : null);
+  // Tricks are optional: if their file fails to load, the lesson's own questions still show.
+  const tricksSettled = !withTricks || tricks.status !== "loading";
+  const deepData = deep.data;
+  const trickData = tricks.data;
+  const merged = useMemo(
+    () =>
+      deepData
+        ? [...deepData, ...(trickData ?? []).filter((q) => q.lessonIds.includes(lesson.id)).map(trapToDeepQuestion)]
+        : null,
+    [deepData, trickData, lesson.id]
+  );
+  const state: JsonState<DeepChallengingQuestion[]> =
+    merged && tricksSettled
+      ? { status: "ready", data: merged, error: null }
+      : deep.status === "error"
+        ? deep
+        : { status: "loading", data: null, error: null };
   return (
     <BankStatus state={state}>
       {(questions) => (
@@ -91,3 +113,4 @@ export function DeepQuestionsTab({
     </BankStatus>
   );
 }
+

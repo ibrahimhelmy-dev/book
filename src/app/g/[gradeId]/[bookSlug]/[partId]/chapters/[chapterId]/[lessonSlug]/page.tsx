@@ -5,10 +5,8 @@ import {
   chapterHref,
   findLessonRef,
   getDeepQuestions,
-  getGlossary,
+  getExamsIndex,
   getLesson,
-  getLessonNav,
-  getSimulatorsForLesson,
   lessonHref,
   requirePart,
   staticParams,
@@ -66,7 +64,6 @@ export default async function LessonPage({ params }: Props) {
     { name: `${lesson.title} (${lesson.number})`, path },
   ];
 
-  const { prev, next } = getLessonNav(part.key, lesson.id);
   const companion = part.companions.find((c) => c.kind === "assessments" && c.status === "available");
   const companionLesson = companion?.lessons.find((l) => l.lessonId === lesson.id);
   const deepQuestions = getDeepQuestions(part.key, lesson.number);
@@ -76,9 +73,9 @@ export default async function LessonPage({ params }: Props) {
     officialCount: companionLesson?.totalQuestions ?? 0,
     deepCount: deepQuestions.length,
     deepCountsBySection: countQuestionsPerSection(deepQuestions, lesson),
+    trapCount: getExamsIndex(part.key).traps?.find((c) => c.chapterId === chapter.id)?.lessons?.[lesson.id] ?? 0,
     companion: companion && companionLesson ? { slug: companion.slug, title: companion.title, bookletPages: companionLesson.bookletPages } : null,
   };
-  const glossary = getGlossary(part.key).filter((g) => g.lessonNumber === lesson.number);
 
   return (
     <>
@@ -98,10 +95,6 @@ export default async function LessonPage({ params }: Props) {
       />
       <LessonContent
         lesson={lesson}
-        prevLesson={prev}
-        nextLesson={next}
-        simulators={getSimulatorsForLesson(part.key, lesson)}
-        glossary={glossary}
         quiz={quiz}
       />
     </>

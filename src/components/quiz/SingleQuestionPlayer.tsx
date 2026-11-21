@@ -427,7 +427,7 @@ export function SingleQuestionPlayer({
                     {currentQ.explanation && (
                       <div className="mt-2.5 pt-2.5 border-t border-white/10 text-xs sm:text-sm text-slate-200 leading-relaxed">
                         <span className="font-bold text-indigo-300">💡 الشرح والتحليل: </span>
-                        <span>{currentQ.explanation}</span>
+                        <span className="whitespace-pre-line">{currentQ.explanation}</span>
                       </div>
                     )}
                   </div>

@@ -173,6 +173,24 @@
   line-height: 2.5;
 }
 
+/* Questions view: question and answer text (.q-text) grows and shrinks with the lesson font size.
+   Same steps as the lesson body above; "normal" keeps each component's own sizes. */
+.quiz-font-large { --quiz-text-size: 1.25rem; }
+.quiz-font-xlarge { --quiz-text-size: 1.5rem; }
+.quiz-font-2xlarge { --quiz-text-size: 1.85rem; }
+.quiz-font-3xlarge { --quiz-text-size: 2.25rem; }
+.quiz-font-4xlarge { --quiz-text-size: 2.75rem; }
+.quiz-font-5xlarge { --quiz-text-size: 3.35rem; }
+.quiz-font-large .q-text,
+.quiz-font-xlarge .q-text,
+.quiz-font-2xlarge .q-text,
+.quiz-font-3xlarge .q-text,
+.quiz-font-4xlarge .q-text,
+.quiz-font-5xlarge .q-text {
+  font-size: var(--quiz-text-size);
+  line-height: 1.9;
+}
+
 /* Print Styles for Official Exam Booklets and Answer Sheets */
 @media print {
   body {

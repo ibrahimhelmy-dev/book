@@ -88,7 +88,14 @@ export interface EngineerChallenge {
     options?: string[];
   }[];
   hint: string;
-  modelAnswer?: string;
+  /** Authored (not printed in the book) model answer, merged in by build-data from authored/engineer-answers.json. */
+  modelAnswer?: EngineerModelAnswer;
+}
+
+export interface EngineerModelAnswer {
+  contentOrigin: "authored";
+  steps: { number: number; answer: string }[];
+  decision?: string;
 }
 
 export interface AppliedTask {
@@ -162,6 +169,8 @@ export interface Lesson {
   challengeYourself: {
     reflect: string;
     challenge: string;
+    /** Authored (not printed in the book) model answers, merged in by build-data from authored/challenge-answers.json. */
+    modelAnswers?: { contentOrigin: "authored"; reflect?: string; challenge?: string };
   };
   questions: QuestionItem[];
   simulatorId?: string;

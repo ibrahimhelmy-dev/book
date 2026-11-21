@@ -247,7 +247,7 @@ export function OfficialAssessmentCard({
         <div className="text-xs text-indigo-400 font-medium">
           الدرس {question.lessonNumber}: {question.lessonTitle}
         </div>
-        <h3 className="text-base sm:text-lg md:text-xl font-bold text-slate-100 leading-relaxed sm:leading-8">
+        <h3 className="q-text text-base sm:text-lg md:text-xl font-bold text-slate-100 leading-relaxed sm:leading-8">
           {question.question}
         </h3>
       </div>
@@ -293,7 +293,7 @@ export function OfficialAssessmentCard({
                   className={btnClasses}
                 >
                   <span className={badgeClasses}>{letter}</span>
-                  <span className="flex-1 leading-snug">{opt}</span>
+                  <span className="q-text flex-1 leading-snug">{opt}</span>
                   {hasInteracted && isOptionCorrect && (
                     <Check className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />
                   )}
@@ -356,7 +356,7 @@ export function OfficialAssessmentCard({
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
               <span>الإجابة النموذجية وتفسير كتاب الوزارة:</span>
             </div>
-            <div className="pr-4 border-r-2 border-indigo-500/40 text-slate-200">
+            <div className="q-text pr-4 border-r-2 border-indigo-500/40 text-slate-200">
               {formatAnswerContent(question.modelAnswer)}
             </div>
           </div>
@@ -409,7 +409,7 @@ export function OfficialAssessmentCard({
                 <Sparkles className="w-4 h-4 text-emerald-400" />
                 <span>الإجابة النموذجية المعتمدة:</span>
               </div>
-              <div className="text-slate-200 text-sm pr-3 border-r-2 border-emerald-500/50">
+              <div className="q-text text-slate-200 text-sm pr-3 border-r-2 border-emerald-500/50">
                 {formatAnswerContent(question.modelAnswer)}
               </div>
 

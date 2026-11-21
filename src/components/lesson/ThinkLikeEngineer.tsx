@@ -12,6 +12,7 @@ export function ThinkLikeEngineer({ challenge }: Props) {
   const [selectedOptions, setSelectedOptions] = useState<Record<number, string>>({});
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [showModelAnswer, setShowModelAnswer] = useState<boolean>(false);
+  const modelAnswer = challenge.modelAnswer;
 
   const handleSelect = (stepNum: number, opt: string) => {
     setSelectedOptions((prev) => ({ ...prev, [stepNum]: opt }));
@@ -92,16 +93,18 @@ export function ThinkLikeEngineer({ challenge }: Props) {
         </div>
       )}
 
-      {/* Model Answer (الإجابة والحل الهندسي النموذجي) */}
-      {challenge.modelAnswer && (
+      {/* Model Answer (authored — the book prints no answer for this activity) */}
+      {modelAnswer && (
         <div className="border border-emerald-500/40 rounded-xl overflow-hidden bg-emerald-950/20">
           <button
+            type="button"
             onClick={() => setShowModelAnswer(!showModelAnswer)}
-            className="w-full p-4 flex items-center justify-between text-right text-xs font-bold text-emerald-300 hover:bg-emerald-950/40 transition-colors cursor-pointer"
+            aria-expanded={showModelAnswer}
+            className="w-full p-4 flex items-center justify-between gap-2 text-right text-sm font-bold text-emerald-300 hover:bg-emerald-950/40 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span>الإجابة النموذجية والقرار الهندسي المعتمد 🏆</span>
+              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>الإجابة النموذجية خطوة بخطوة</span>
             </div>
             <span className="text-[11px] px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
               {showModelAnswer ? (
@@ -118,12 +121,31 @@ export function ThinkLikeEngineer({ challenge }: Props) {
             </span>
           </button>
           {showModelAnswer && (
-            <div className="p-4 pt-0 border-t border-emerald-500/20 space-y-2 text-xs text-slate-200 animate-fadeIn">
-              {challenge.modelAnswer.split("\n").map((line, idx) => (
-                <p key={idx} className="leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-emerald-500/20">
-                  {line}
-                </p>
-              ))}
+            <div className="p-4 border-t border-emerald-500/20 space-y-3 animate-fadeIn">
+              <p className="text-[11px] leading-relaxed text-sky-300 bg-sky-950/30 border border-sky-500/25 rounded-lg px-3 py-2">
+                💡 توضيح إضافي — الكتاب لا يطبع إجابة لهذا النشاط؛ هذه إجابة مقترحة مبنية على مفاهيم الدرس، والأرقام
+                الواردة في الجداول أمثلة توضيحية تستبدلها بنتائجك.
+              </p>
+              {modelAnswer.steps.map((s) => {
+                const step = challenge.steps.find((st) => st.number === s.number);
+                return (
+                  <div key={s.number} className="bg-slate-950/60 p-3.5 rounded-lg border border-emerald-500/20 space-y-1.5">
+                    <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                      <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-mono flex items-center justify-center border border-emerald-500/30 shrink-0">
+                        {s.number}
+                      </span>
+                      <span>{step?.title ?? `الخطوة ${s.number}`}</span>
+                    </div>
+                    <p className="text-sm text-slate-100 leading-loose whitespace-pre-line">{s.answer}</p>
+                  </div>
+                );
+              })}
+              {modelAnswer.decision && (
+                <div className="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-sm text-emerald-50 leading-loose">
+                  <strong className="text-emerald-300 ml-1">الخلاصة:</strong>
+                  {modelAnswer.decision}
+                </div>
+              )}
             </div>
           )}
         </div>

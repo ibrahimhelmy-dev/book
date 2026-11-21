@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { part } from "./helpers";
+import { openQuestionsTab, part } from "./helpers";
 
 /**
  * Downloads the term-1 offline pack through the real service worker, then goes offline and checks
@@ -24,7 +24,7 @@ test("term-1 offline pack works without network", async ({ page, context }) => {
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
   // Question banks come from the pack cache
-  await page.getByRole("button", { name: /التقييمات الرسمية \(\d+\)/ }).first().click();
+  await openQuestionsTab(page, /التقييمات \(\d+\)/);
   await expect(page.getByRole("link", { name: /افتح في كتيب التقييمات/ })).toBeVisible();
   await expect(page.getByText("تعذر تحميل الأسئلة")).toHaveCount(0);
 

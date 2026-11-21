@@ -263,7 +263,7 @@ export function EssayQuestionsViewer({ lessonId, questions }: Props) {
             <FileCheck className="w-4 h-4" />
             <span>نص السؤال المطلوب إجابته:</span>
           </div>
-          <p className="text-base sm:text-lg font-bold text-white leading-relaxed">
+          <p className="q-text text-base sm:text-lg font-bold text-white leading-relaxed">
             {currentQ.questionText}
           </p>
         </div>
@@ -377,7 +377,7 @@ export function EssayQuestionsViewer({ lessonId, questions }: Props) {
                   <Sparkles className="w-4 h-4" />
                   <span>نموذج الإجابة المعتمد الكامل:</span>
                 </div>
-                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-line font-normal">
+                <p className="q-text text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-line font-normal">
                   {String(currentQ.correctAnswer)}
                 </p>
               </div>

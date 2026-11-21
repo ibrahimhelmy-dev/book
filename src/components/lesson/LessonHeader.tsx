@@ -505,20 +505,6 @@ export function LessonHeader({
         </p>
       )}
 
-      {/* Core Idea & Key Question */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-        <div className="bg-slate-950/60 border-r-4 border-r-indigo-500 border border-slate-800/80 rounded-xl p-3.5 sm:p-4 text-slate-200 text-xs sm:text-sm leading-relaxed">
-          <span className="font-bold text-indigo-400 ml-1.5">💡 الفكرة الأساسية:</span>
-          <span>{lesson.coreIdea}</span>
-        </div>
-        {lesson.keyQuestion && (
-          <div className="bg-slate-950/60 border-r-4 border-r-amber-500 border border-slate-800/80 rounded-xl p-3.5 sm:p-4 text-slate-200 text-xs sm:text-sm leading-relaxed">
-            <span className="font-bold text-amber-400 ml-1.5">❓ السؤال الرئيسي:</span>
-            <span>{lesson.keyQuestion}</span>
-          </div>
-        )}
-      </div>
-
       {/* Learning Path */}
       {lesson.learningPath?.current && (
         <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mb-3 px-1">
@@ -527,16 +513,24 @@ export function LessonHeader({
         </div>
       )}
 
-      {/* Compact Learning Objectives Toggle */}
+      {/* Core idea + learning objectives, collapsed by default */}
       <div>
         <button
           type="button"
           onClick={() => setShowObjectives((prev) => !prev)}
+          aria-expanded={showObjectives}
           className="text-xs font-medium text-slate-400 hover:text-slate-200 flex items-center gap-1.5 cursor-pointer py-1 transition-colors"
         >
-          <span>🎯 أهداف التعلم ({lesson.learningObjectives.length})</span>
+          <span>💡 الفكرة الأساسية و🎯 أهداف التعلم ({lesson.learningObjectives.length})</span>
           <span className="text-[10px] text-slate-500">{showObjectives ? "▲ إخفاء" : "▼ عرض"}</span>
         </button>
+
+        {showObjectives && lesson.coreIdea && (
+          <div className="mt-2.5 bg-slate-950/60 border-r-4 border-r-indigo-500 border border-slate-800/80 rounded-xl p-3.5 sm:p-4 text-slate-200 text-xs sm:text-sm leading-relaxed animate-fadeIn">
+            <span className="font-bold text-indigo-400 ml-1.5">💡 الفكرة الأساسية:</span>
+            <span>{lesson.coreIdea}</span>
+          </div>
+        )}
 
         {showObjectives && (
           <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2 animate-fadeIn">

@@ -22,3 +22,9 @@ export function trackRequests(page: Page) {
 }
 
 export const isBankRequest = (url: string) => /\/data\/.+\/(deep|assessments|practice)\//.test(url);
+
+/** From a lesson page, opens the questions view and selects a tab («مراجعة», «الكتاب», «التقييمات», «فهم»). */
+export async function openQuestionsTab(page: Page, tab: RegExp) {
+  await page.getByTitle("الانتقال إلى تمارين وأسئلة الدرس").first().click();
+  await page.getByRole("tab", { name: tab }).click();
+}

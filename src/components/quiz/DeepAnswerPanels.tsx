@@ -24,7 +24,7 @@ export function FillBlankSentence({
 }) {
   const parts = splitBlanks(text);
   return (
-    <p className="text-base sm:text-lg font-bold text-white leading-[2.6] sm:leading-[2.6] whitespace-pre-line">
+    <p className="q-text text-base sm:text-lg font-bold text-white leading-[2.6] sm:leading-[2.6] whitespace-pre-line">
       {parts.map((part, i) => {
         const blank = blanks[i];
         if (i === parts.length - 1 || !blank) return <span key={i}>{part}</span>;

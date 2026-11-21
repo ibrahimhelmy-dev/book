@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { isBankRequest, part, TERM1, trackPageErrors, trackRequests } from "./helpers";
+import { isBankRequest, openQuestionsTab, part, TERM1, trackPageErrors, trackRequests } from "./helpers";
 
 const LESSON = part("chapters/chapter-1/how-ai-works/");
 
@@ -17,7 +17,7 @@ test.describe("lesson page", () => {
   test("questions tabs fetch only this lesson's banks", async ({ page }) => {
     const requests = trackRequests(page);
     await page.goto(LESSON);
-    await page.getByRole("button", { name: /التقييمات الرسمية \(\d+\)/ }).first().click();
+    await openQuestionsTab(page, /التقييمات \(\d+\)/);
     await expect(page.getByRole("link", { name: /افتح في كتيب التقييمات/ })).toBeVisible();
     // networkidle doesn't wait again once the page has loaded, so wait for the deep bank request itself.
     const deepRequest = page.waitForRequest((r) => /\/deep\/1-2\.json$/.test(r.url()));
@@ -26,12 +26,6 @@ test.describe("lesson page", () => {
     await page.waitForLoadState("networkidle");
     const banks = requests.filter(isBankRequest).map((u) => decodeURIComponent(new URL(u).pathname).split("/data/")[1]);
     expect([...new Set(banks)].sort()).toEqual([`${TERM1}/assessments/lesson-1-2.json`, `${TERM1}/deep/1-2.json`]);
-  });
-
-  test("next lesson navigation", async ({ page }) => {
-    await page.goto(LESSON);
-    await page.getByRole("link", { name: /الدرس التالي/ }).click();
-    await expect(page).toHaveURL(/chapter-1\/ai-daily-life-industry\/$/);
   });
 
   test("storyline page exists for the lesson", async ({ page }) => {

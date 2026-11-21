@@ -129,7 +129,7 @@ function ChapterBankLoader({
           lesson={lesson}
           questions={tagChapterQuestions(questions, chapterNumber)}
           heading={`بنك أسئلة الوحدة ${chapterNumber}`}
-          sectionFilterLabel="تصفية الأسئلة بحسب الدرس:"
+          sectionFilterLabel="الدرس"
         />
       )}
     </BankStatus>

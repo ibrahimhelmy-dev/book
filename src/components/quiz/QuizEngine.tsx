@@ -473,7 +473,7 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
 
           {/* Question Text with Responsive Padding */}
           <div className="w-full bg-slate-950/70 p-4 sm:p-6 rounded-2xl border border-slate-800/90 mb-4 sm:mb-6 min-h-[64px] sm:min-h-[90px] flex items-center box-border">
-            <p className="w-full text-base sm:text-lg font-bold text-slate-100 leading-relaxed break-words">
+            <p className="q-text w-full text-base sm:text-lg font-bold text-slate-100 leading-relaxed break-words">
               {currentQ.questionText}
             </p>
           </div>
@@ -530,7 +530,7 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
                               opt.id.toUpperCase()
                             )}
                           </span>
-                          <span className="break-words flex-1 text-slate-200 font-medium">{opt.text}</span>
+                          <span className="q-text break-words flex-1 text-slate-200 font-medium">{opt.text}</span>
                         </button>
                       );
                     })}
@@ -715,7 +715,7 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
 
                     {/* Scientific Explanation */}
                     {currentQ.explanation && (
-                      <div className="text-xs text-slate-300 bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
+                      <div className="q-text text-xs text-slate-300 bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
                         <strong className="text-indigo-300 block mb-1 font-bold">
                           📖 الشرح والتفسير العلمي:
                         </strong>
@@ -825,7 +825,7 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
                               : "تطبيق عملي"}
                           </span>
                         </div>
-                        <p className="text-xs sm:text-sm font-bold text-slate-100 leading-relaxed">
+                        <p className="q-text text-xs sm:text-sm font-bold text-slate-100 leading-relaxed">
                           {q.questionText}
                         </p>
                       </div>
@@ -863,7 +863,7 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
                       </div>
 
                       {q.explanation && (
-                        <div className="text-slate-300 bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 mt-2 leading-relaxed text-xs">
+                        <div className="q-text text-slate-300 bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 mt-2 leading-relaxed text-xs">
                           <strong className="text-indigo-300 block mb-1 font-bold">
                             📖 الشرح والتفسير العلمي:
                           </strong>

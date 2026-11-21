@@ -209,7 +209,7 @@ export function SimpleQuestionCard({
               {(question as any).explanation && (
                 <div className="mt-2 pt-2 border-t border-white/10 text-xs text-slate-200">
                   <span className="font-bold text-indigo-300">💡 الشرح والتوضيح: </span>
-                  <span>{(question as any).explanation}</span>
+                  <span className="whitespace-pre-line">{(question as any).explanation}</span>
                 </div>
               )}
             </div>

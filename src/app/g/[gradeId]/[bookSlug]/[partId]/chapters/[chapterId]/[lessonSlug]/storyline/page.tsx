@@ -1,7 +1,7 @@
 import React from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { chapterHref, findLessonRef, getStoryline, lessonHref, requirePart, staticParams, storylineHref, type PartRouteParams } from "@/content";
+import { chapterHref, findLessonRef, getLesson, getSimulatorsForLesson, getStoryline, lessonHref, requirePart, staticParams, storylineHref, type PartRouteParams } from "@/content";
 import { breadcrumbJsonLd, pageMetadata, partTrail } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { StorylinePageContent } from "@/components/storyline/StorylinePageContent";
@@ -18,7 +18,12 @@ function load(params: Awaited<Props["params"]>) {
   const { chapterId, lessonSlug, ...ref } = params;
   const part = requirePart(ref);
   const lessonRef = findLessonRef(part.key, chapterId, lessonSlug);
-  return { part, storyline: lessonRef ? getStoryline(part.key, lessonRef.id) : null };
+  const lesson = lessonRef ? getLesson(part.key, lessonRef.id) : null;
+  return {
+    part,
+    storyline: lessonRef ? getStoryline(part.key, lessonRef.id) : null,
+    simulators: lesson ? getSimulatorsForLesson(part.key, lesson) : [],
+  };
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -33,7 +38,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function StorylinePage({ params }: Props) {
-  const { part, storyline } = load(await params);
+  const { part, storyline, simulators } = load(await params);
   if (!storyline) notFound();
   const lessonUrl = lessonHref(part.key, storyline.chapterId, storyline.lessonSlug);
   const chapter = part.chapters.find((c) => c.id === storyline.chapterId);
@@ -46,7 +51,7 @@ export default async function StorylinePage({ params }: Props) {
   return (
     <>
       <JsonLd data={breadcrumbJsonLd(trail)} />
-      <StorylinePageContent storyline={storyline} lessonUrl={lessonUrl} />
+      <StorylinePageContent storyline={storyline} lessonUrl={lessonUrl} simulators={simulators} />
     </>
   );
 }

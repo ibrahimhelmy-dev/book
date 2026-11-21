@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { trackPageErrors } from "./helpers";
+import { openQuestionsTab, trackPageErrors } from "./helpers";
 
 const TERM2 = "g/secondary-2/programming-ai/term-2/";
 
@@ -8,7 +8,7 @@ test.describe("term-2 (no authored deep questions, no assessments booklet yet)",
     const errs = trackPageErrors(page);
     await page.goto(`${TERM2}chapters/chapter-5/data-collection-methods/`);
     await expect(page.getByRole("heading", { level: 1 })).toContainText("طرق جمع البيانات");
-    await page.getByRole("button", { name: /أسئلة الفهم/ }).first().click();
+    await openQuestionsTab(page, /فهم/);
     await expect(page.getByText("لا توجد أسئلة فهم مُعدّة لهذا الدرس بعد.")).toBeVisible();
     errs.assertNone();
   });
@@ -21,7 +21,7 @@ test.describe("term-2 (no authored deep questions, no assessments booklet yet)",
   test("term-2 lesson has no companion link (booklet coming soon)", async ({ page }) => {
     const errs = trackPageErrors(page);
     await page.goto(`${TERM2}chapters/chapter-6/statistical-inference/`);
-    await page.getByTitle("الانتقال إلى تمارين وأسئلة الدرس").first().click();
+    await openQuestionsTab(page, /التقييمات/);
     await expect(page.getByText("لا توجد تقييمات رسمية لهذا الدرس.")).toBeVisible();
     await expect(page.getByRole("link", { name: /افتح في كتيب التقييمات/ })).toHaveCount(0);
     errs.assertNone();

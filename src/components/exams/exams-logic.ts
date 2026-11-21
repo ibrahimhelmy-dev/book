@@ -9,7 +9,7 @@ import type { OfficialAssessmentQuestion, OfficialAssessmentSectionType } from "
 import type { EnrichedSimpleQuestion, SimpleDifficulty } from "@/lib/practice";
 import { matchesSearch } from "@/lib/arabic";
 
-export type ExamsTab = "official" | "practice" | "presets";
+export type ExamsTab = "official" | "practice" | "presets" | "traps";
 export type OfficialSectionFilter = OfficialAssessmentSectionType | "all";
 export type OfficialTypeFilter = "all" | "mcq" | "essay";
 export type DifficultyFilter = SimpleDifficulty | "all";

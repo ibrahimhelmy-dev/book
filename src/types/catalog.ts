@@ -142,7 +142,16 @@ export interface ExamsIndex {
     mcqCount: number;
     essayCount: number;
   }[];
-  totals: { practice: number; official: number };
+  /** «تركات الامتحان» per chapter (traps/<chapterId>.json); empty when none are authored. */
+  traps: {
+    chapterId: string;
+    chapterNumber: number;
+    chapterTitle: string;
+    count: number;
+    /** Questions shown in each lesson's «تركات الامتحان» tab (its own + cross-lesson items using its concepts). */
+    lessons: Record<string, number>;
+  }[];
+  totals: { practice: number; official: number; traps: number };
 }
 
 /** Lesson search record (search-lessons.json), fetched with glossary.json and acronyms.json when search opens. */

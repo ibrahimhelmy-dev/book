@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Award, Sparkles, Timer, type LucideIcon } from "lucide-react";
+import { Award, Flame, Sparkles, Timer, type LucideIcon } from "lucide-react";
 import type { ExamsTab } from "./exams-logic";
 
 interface TabDef {
@@ -20,19 +20,22 @@ interface TabDef {
 const INDIGO_ACTIVE =
   "bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400/40";
 
-/** Mode switcher: official booklet / direct practice bank / ready-made timed booklets. */
+/** Mode switcher: official booklet / direct practice bank / ready-made timed booklets / tricky-teacher traps. */
 export function ExamsTabs({
   activeTab,
   onChange,
   showOfficial,
   officialTotal,
   practiceTotal,
+  trapsTotal,
 }: {
   activeTab: ExamsTab;
   onChange: (tab: ExamsTab) => void;
   showOfficial: boolean;
   officialTotal: number;
   practiceTotal: number;
+  /** 0 hides the «تركات الامتحان» tab. */
+  trapsTotal: number;
 }) {
   const tabs: TabDef[] = [
     ...(showOfficial
@@ -73,12 +76,29 @@ export function ExamsTabs({
       badgeIdle: "text-amber-400 border border-amber-500/20",
       subtitleActive: "text-amber-100",
     },
+    ...(trapsTotal > 0
+      ? [
+          {
+            id: "traps" as const,
+            title: "تركات الامتحان 🎯",
+            subtitle: "أسئلة ملتوية وفخاخ متوقعة في الامتحان",
+            badge: `${trapsTotal} سؤالاً`,
+            Icon: Flame,
+            active:
+              "bg-gradient-to-r from-rose-700 via-rose-600 to-rose-700 text-white shadow-lg shadow-rose-700/30 ring-2 ring-rose-400/40",
+            iconIdle: "bg-rose-500/10 text-rose-400",
+            badgeIdle: "text-rose-400 border border-rose-500/20",
+            subtitleActive: "text-rose-100",
+          },
+        ]
+      : []),
   ];
+  const gridCols = tabs.length >= 4 ? "sm:grid-cols-2 lg:grid-cols-4" : tabs.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2";
 
   return (
     <div
       role="tablist"
-      className={`grid grid-cols-1 ${tabs.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-3 p-1.5 bg-slate-900/90 border border-slate-800 rounded-3xl shadow-xl`}
+      className={`grid grid-cols-1 ${gridCols} gap-3 p-1.5 bg-slate-900/90 border border-slate-800 rounded-3xl shadow-xl`}
     >
       {tabs.map(({ id, title, subtitle, badge, Icon, active, iconIdle, badgeIdle, subtitleActive }) => {
         const isActive = activeTab === id;

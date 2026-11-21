@@ -29,7 +29,7 @@ import {
   type ExamsTab,
 } from "./exams-logic";
 import { useExamsFilters } from "./use-exams-filters";
-import { useOfficialBank, usePracticeBank } from "./use-question-banks";
+import { useOfficialBank, usePracticeBank, useTrapBank } from "./use-question-banks";
 import { downloadJson, useCopyJson, usePracticeSession, usePresetLauncher, useScore } from "./use-exam-session";
 import { ExamsHeader } from "./ExamsHeader";
 import { ExamsTabs } from "./ExamsTabs";
@@ -39,8 +39,10 @@ import { PracticeFilters } from "./PracticeFilters";
 import { OfficialBankTab } from "./OfficialBankTab";
 import { PracticeTab } from "./PracticeTab";
 import { PresetsTab } from "./PresetsTab";
+import type { TrapQuestion } from "@/lib/traps";
 import { ExamConfigModal } from "./ExamConfigModal";
 import { JsonExportModal } from "./JsonExportModal";
+import { TrapsTab } from "./TrapsTab";
 
 export interface ExamsViewProps {
   partKey: string;
@@ -68,6 +70,14 @@ export function ExamsView({ partKey, chapters, examsIndex, officialCompanionSlug
   const clipboard = useCopyJson();
   const presets = usePresetLauncher(partKey, examsIndex, chapters, setActiveExamModel);
   const isOfficialTab = activeTab === "official";
+  const isTrapsTab = activeTab === "traps";
+  const trapsSession = usePracticeSession();
+  const [trapChapterIds, setTrapChapterIds] = useState<string[]>([]);
+  const trapChapters = examsIndex.traps ?? [];
+  const trapsTotal = examsIndex.totals.traps ?? 0;
+  const trapScope = trapChapters.filter((c) => !trapChapterIds.length || trapChapterIds.includes(c.chapterId));
+  const trapScopeLabel =
+    trapScope.length === 1 ? `الوحدة ${trapScope[0].chapterNumber}: ${trapScope[0].chapterTitle}` : "كل الوحدات المتاحة";
 
   // --- Index-derived counts and scope (no fetch needed) ---
   const review = useMemo(() => unitReviewInfo(examsIndex), [examsIndex]);
@@ -91,7 +101,11 @@ export function ExamsView({ partKey, chapters, examsIndex, officialCompanionSlug
   const reviewCountInScope = useMemo(() => unitReviewCountInScope(examsIndex, chapterIds), [examsIndex, chapterIds]);
 
   // --- Question banks: fetched only for the active tab's scope ---
-  const practiceBank = usePracticeBank(partKey, isOfficialTab ? null : practiceKeys);
+  const practiceBank = usePracticeBank(partKey, isOfficialTab || isTrapsTab ? null : practiceKeys);
+  const trapsBank = useTrapBank(
+    partKey,
+    isTrapsTab ? (trapChapterIds.length ? trapChapterIds : trapChapters.map((c) => c.chapterId)) : null
+  );
   const officialBank = useOfficialBank(partKey, officialCompanionSlug, isOfficialTab ? officialIds : null);
   const practiceReady = practiceBank.status === "ready";
   const officialReady = officialBank.status === "ready";
@@ -158,8 +172,31 @@ export function ExamsView({ partKey, chapters, examsIndex, officialCompanionSlug
     setIsExamConfigOpen(false);
   };
 
+  const startTrapsExam = (pool: TrapQuestion[]) => {
+    if (pool.length === 0) return;
+    const count = Math.min(pool.length, 30);
+    setActiveExamModel(
+      createExamModelFromQuestions(pool, {
+        title: `تركات الامتحان — ${trapScopeLabel}`,
+        durationMinutes: examDurationMinutes(count),
+        maxQuestions: count,
+        randomize: true,
+      })
+    );
+  };
+
   const downloadOfficial = () => downloadJson(filteredOfficial, officialExportFileName({ chapterIds, lessonKeys }));
-  const exportData = isOfficialTab ? (officialReady ? filteredOfficial : null) : practiceReady ? filteredPractice : null;
+  const exportData = isOfficialTab
+    ? officialReady
+      ? filteredOfficial
+      : null
+    : isTrapsTab
+      ? trapsBank.status === "ready"
+        ? trapsBank.questions
+        : null
+      : practiceReady
+        ? filteredPractice
+        : null;
 
   // =========================================================================
   // VIEW: Interactive running exam session
@@ -196,103 +233,118 @@ export function ExamsView({ partKey, chapters, examsIndex, officialCompanionSlug
           showOfficial={hasOfficial}
           officialTotal={examsIndex.totals.official}
           practiceTotal={examsIndex.totals.practice}
+          trapsTotal={trapsTotal}
         />
 
-        <ScopeFilters
-          isOfficial={isOfficialTab}
-          chapters={chapters}
-          scope={{ chapterIds, lessonKeys, unitReviewOnly }}
-          actions={actions}
-          totalCount={isOfficialTab ? examsIndex.totals.official : examsIndex.totals.practice}
-          chapterCounts={isOfficialTab ? counts.officialByChapter : counts.practiceByChapter}
-          lessonCounts={isOfficialTab ? counts.officialByLesson : counts.practiceByLesson}
-          review={
-            activeTab === "practice" && review
-              ? {
-                  label: review.label,
-                  count: reviewCountInScope,
-                  showInGrid: chapterIds.length === 0 || review.chapterIds.some((id) => chapterIds.includes(id)),
-                  onToggle: toggleUnitReview,
-                }
-              : null
-          }
-        >
-          {isOfficialTab ? (
-            <OfficialFilters
-              section={officialSection}
-              type={officialType}
-              search={search}
-              onSectionChange={actions.setOfficialSection}
-              onTypeChange={actions.setOfficialType}
-              onSearchChange={actions.setSearch}
-              scopeSummary={officialSummary}
-              stats={officialStats}
-              ready={officialReady}
-              onStartExam={startOfficialExam}
-              onDownload={downloadOfficial}
-            />
-          ) : (
-            <PracticeFilters
-              difficulty={difficulty}
-              counts={difficultyCounts}
-              onDifficultyChange={actions.setDifficulty}
-              search={search}
-              onSearchChange={actions.setSearch}
-              scopeSummary={practiceSummary}
-              available={practiceAvailable}
-              ready={practiceReady}
-              onOpenExamConfig={() => setIsExamConfigOpen(true)}
-              isPresetsTab={activeTab === "presets"}
-              onShowPresets={() => setActiveTab("presets")}
-            />
-          )}
-        </ScopeFilters>
-
-        {isOfficialTab ? (
-          <OfficialBankTab
-            bank={officialBank}
-            questions={filteredOfficial}
-            stats={officialStats}
-            scopeSummary={officialSummary}
-            page={filters.officialPage}
-            onPageChange={actions.setOfficialPage}
-            score={officialScore.score}
-            onAnswer={officialScore.record}
-            onResetScore={officialScore.reset}
-            onDownload={downloadOfficial}
-            onStartExam={startOfficialExam}
-            onResetFilters={actions.reset}
-          />
-        ) : activeTab === "presets" ? (
-          <PresetsTab
-            chapters={chapters}
-            review={review}
-            launchingKey={presets.launchingKey}
-            failedKey={presets.failedKey}
-            onLaunch={presets.launch}
-            onBackToPractice={() => setActiveTab("practice")}
+        {isTrapsTab ? (
+          <TrapsTab
+            scopeLabel={trapScopeLabel}
+            chapters={trapChapters}
+            chapterIds={trapChapterIds}
+            onChapterIdsChange={setTrapChapterIds}
+            bank={trapsBank}
+            session={trapsSession}
+            onLaunchExam={startTrapsExam}
           />
         ) : (
-          <PracticeTab
-            bank={practiceBank}
-            questions={filteredPractice}
-            page={filters.practicePage}
-            onPageChange={actions.setPracticePage}
-            questionIndex={filters.questionIndex}
-            onQuestionIndexChange={actions.setQuestionIndex}
-            session={practiceSession}
-            reviewBanner={
-              unitReviewOnly && review
-                ? {
-                    label: review.label,
-                    launching: presets.launchingKey === REVIEW_PRESET,
-                    onLaunchExam: () => presets.launch(REVIEW_PRESET),
-                    onExit: toggleUnitReview,
-                  }
-                : null
-            }
-            onResetFilters={actions.reset}
-          />
+          <>
+            <ScopeFilters
+              isOfficial={isOfficialTab}
+              chapters={chapters}
+              scope={{ chapterIds, lessonKeys, unitReviewOnly }}
+              actions={actions}
+              totalCount={isOfficialTab ? examsIndex.totals.official : examsIndex.totals.practice}
+              chapterCounts={isOfficialTab ? counts.officialByChapter : counts.practiceByChapter}
+              lessonCounts={isOfficialTab ? counts.officialByLesson : counts.practiceByLesson}
+              review={
+                activeTab === "practice" && review
+                  ? {
+                      label: review.label,
+                      count: reviewCountInScope,
+                      showInGrid: chapterIds.length === 0 || review.chapterIds.some((id) => chapterIds.includes(id)),
+                      onToggle: toggleUnitReview,
+                    }
+                  : null
+              }
+            >
+              {isOfficialTab ? (
+                <OfficialFilters
+                  section={officialSection}
+                  type={officialType}
+                  search={search}
+                  onSectionChange={actions.setOfficialSection}
+                  onTypeChange={actions.setOfficialType}
+                  onSearchChange={actions.setSearch}
+                  scopeSummary={officialSummary}
+                  stats={officialStats}
+                  ready={officialReady}
+                  onStartExam={startOfficialExam}
+                  onDownload={downloadOfficial}
+                />
+              ) : (
+                <PracticeFilters
+                  difficulty={difficulty}
+                  counts={difficultyCounts}
+                  onDifficultyChange={actions.setDifficulty}
+                  search={search}
+                  onSearchChange={actions.setSearch}
+                  scopeSummary={practiceSummary}
+                  available={practiceAvailable}
+                  ready={practiceReady}
+                  onOpenExamConfig={() => setIsExamConfigOpen(true)}
+                  isPresetsTab={activeTab === "presets"}
+                  onShowPresets={() => setActiveTab("presets")}
+                />
+              )}
+            </ScopeFilters>
+
+            {isOfficialTab ? (
+              <OfficialBankTab
+                bank={officialBank}
+                questions={filteredOfficial}
+                stats={officialStats}
+                scopeSummary={officialSummary}
+                page={filters.officialPage}
+                onPageChange={actions.setOfficialPage}
+                score={officialScore.score}
+                onAnswer={officialScore.record}
+                onResetScore={officialScore.reset}
+                onDownload={downloadOfficial}
+                onStartExam={startOfficialExam}
+                onResetFilters={actions.reset}
+              />
+            ) : activeTab === "presets" ? (
+              <PresetsTab
+                chapters={chapters}
+                review={review}
+                launchingKey={presets.launchingKey}
+                failedKey={presets.failedKey}
+                onLaunch={presets.launch}
+                onBackToPractice={() => setActiveTab("practice")}
+              />
+            ) : (
+              <PracticeTab
+                bank={practiceBank}
+                questions={filteredPractice}
+                page={filters.practicePage}
+                onPageChange={actions.setPracticePage}
+                questionIndex={filters.questionIndex}
+                onQuestionIndexChange={actions.setQuestionIndex}
+                session={practiceSession}
+                reviewBanner={
+                  unitReviewOnly && review
+                    ? {
+                        label: review.label,
+                        launching: presets.launchingKey === REVIEW_PRESET,
+                        onLaunchExam: () => presets.launch(REVIEW_PRESET),
+                        onExit: toggleUnitReview,
+                      }
+                    : null
+                }
+                onResetFilters={actions.reset}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -307,7 +359,13 @@ export function ExamsView({ partKey, chapters, examsIndex, officialCompanionSlug
 
       {isJsonOpen && exportData && (
         <JsonExportModal
-          title={isOfficialTab ? "معاينة كود JSON لأسئلة التقييمات الرسمية للوزارة" : "معاينة كود JSON للأسئلة المفلترة"}
+          title={
+            isOfficialTab
+              ? "معاينة كود JSON لأسئلة التقييمات الرسمية للوزارة"
+              : isTrapsTab
+                ? "معاينة كود JSON لتركات الامتحان"
+                : "معاينة كود JSON للأسئلة المفلترة"
+          }
           data={exportData}
           isCopied={clipboard.isCopied}
           onCopy={() => clipboard.copy(exportData)}

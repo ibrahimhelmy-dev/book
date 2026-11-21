@@ -9,7 +9,6 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
-  Filter,
   Brain,
   Sparkles,
   HelpCircle,
@@ -38,12 +37,13 @@ interface Props {
   questions: DeepChallengingQuestion[];
   targetSectionId?: string | null;
   onClearTargetSection?: () => void;
-  /** Header title and section-strip label (a chapter bank filters by lesson instead of section). */
+  /** Optional bank title, and the label of the section filter (a chapter bank filters by lesson instead of section). */
   heading?: string;
   sectionFilterLabel?: string;
 }
 
-type SimpleDifficulty = "easy" | "medium" | "hard";
+/** "trick" = «تركات امتحان» (authored trap questions merged into the bank, flagged isExamTrick). */
+type SimpleDifficulty = "easy" | "medium" | "hard" | "trick";
 
 const DIFFICULTY_CONFIG: Record<
   string,
@@ -63,6 +63,11 @@ const DIFFICULTY_CONFIG: Record<
     label: "صعب",
     badgeClass: "bg-rose-500/10 text-rose-400 border-rose-500/30",
     dotClass: "bg-rose-400",
+  },
+  trick: {
+    label: "تركات امتحان 🎯",
+    badgeClass: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30",
+    dotClass: "bg-fuchsia-400",
   },
 };
 
@@ -130,13 +135,47 @@ function formatExplanationContent(text: string) {
   return <div className="space-y-2 leading-relaxed">{formatParagraphs(text)}</div>;
 }
 
+const DIFFICULTY_LABELS: Record<SimpleDifficulty, string> = { easy: "سهل", medium: "متوسط", hard: "صعب", trick: "تركات امتحان 🎯" };
+
+/** A small labelled dropdown used by the filter bar. */
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  return (
+    <label className={`flex flex-col gap-1 min-w-0 ${className}`}>
+      <span className="text-[11px] font-bold text-slate-400 px-1">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 w-full min-w-0 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-xs sm:text-sm font-semibold px-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function DeepComprehensionViewer({
   lesson,
   questions: allQuestions,
   targetSectionId,
   onClearTargetSection,
-  heading = "أسئلة وتدريبات الفهم للدرس",
-  sectionFilterLabel = "تصفية الأسئلة بحسب أقسام الشرح:",
+  heading,
+  sectionFilterLabel = "القسم",
 }: Props) {
 
   // Map each question to its corresponding section in the lesson
@@ -212,6 +251,7 @@ export function DeepComprehensionViewer({
       const rawDiff = String(q.difficulty || "").toLowerCase();
       if (rawDiff === "easy" || rawDiff === "سهل") diff = "easy";
       else if (rawDiff === "hard" || rawDiff === "very-hard" || rawDiff === "expert" || rawDiff === "صعب") diff = "hard";
+      if (q.isExamTrick) diff = "trick";
 
       let answerText = "";
       if (typeof q.answer === "string" && q.answer.trim()) {
@@ -456,224 +496,90 @@ export function DeepComprehensionViewer({
 
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6" dir="rtl">
-      {/* 1. Simple Header & Controls */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-            <Brain className="w-5 h-5 text-indigo-400" />
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-white leading-snug">{heading}</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {isMixedBank
-                ? `${presentKinds.map((k) => KIND_LABELS[k]).join("، ")} — مع التحقق الفوري والشرح`
-                : "أسئلة مبسطة (سؤال، اختيارات، وإجابة) مع التحقق الفوري عند الحل"}
-            </p>
-          </div>
-        </div>
-
-        {/* Action Controls: Think First Switch + Difficulty Filters */}
-        <div className="flex flex-wrap items-center gap-2.5 pt-3 lg:pt-0 border-t border-slate-800 lg:border-t-0 justify-between lg:justify-end">
-          {/* Think First Toggle */}
+      {/* 1. One compact filter bar: section, kind (mixed banks only), difficulty, think-first */}
+      <div className="p-2.5 sm:p-3 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-2.5">
+        {heading && (
+          <h3 className="text-sm sm:text-base font-bold text-white px-1">
+            {heading} <span className="text-slate-400 font-mono text-xs">({normalizedQuestions.length})</span>
+          </h3>
+        )}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {lesson.sections && lesson.sections.length > 1 && (
+            <FilterSelect
+              label={sectionFilterLabel}
+              value={selectedSectionId}
+              className="col-span-2 sm:col-span-1"
+              onChange={(v) => {
+                setSelectedSectionId(v);
+                setCurrentIndex(0);
+                if (v === "all" && onClearTargetSection) onClearTargetSection();
+              }}
+              options={[
+                { value: "all", label: `الكل (${normalizedQuestions.length})` },
+                ...lesson.sections.map((sec) => ({
+                  value: sec.id,
+                  label: `${sectionNums.get(sec.id)}. ${sec.title.replace(/^[0-9.]+\s*/, "")} (${sectionCounts[sec.id] || 0})`,
+                })),
+              ]}
+            />
+          )}
+          {isMixedBank && (
+            <FilterSelect
+              label="النوع"
+              value={selectedKind}
+              onChange={(v) => {
+                setSelectedKind(v as "all" | DeepQuestionKind);
+                setCurrentIndex(0);
+              }}
+              options={[
+                { value: "all", label: `كل الأنواع (${normalizedQuestions.length})` },
+                ...presentKinds.map((k) => ({ value: k, label: `${KIND_LABELS[k]} (${kindCounts[k]})` })),
+              ]}
+            />
+          )}
+          <FilterSelect
+            label="الصعوبة"
+            value={selectedDifficulty}
+            onChange={(v) => {
+              setSelectedDifficulty(v);
+              setCurrentIndex(0);
+            }}
+            options={[
+              { value: "all", label: `الكل (${normalizedQuestions.length})` },
+              ...(["easy", "medium", "hard", "trick"] as const)
+                .map((d) => ({ d, count: normalizedQuestions.filter((q) => q.difficulty === d).length }))
+                // «تركات امتحان» only appears when the lesson has some.
+                .filter(({ d, count }) => d !== "trick" || count > 0)
+                .map(({ d, count }) => ({ value: d, label: `${DIFFICULTY_LABELS[d]} (${count})` })),
+            ]}
+          />
+          {/* Think First: hide the options of a multiple-choice question until you have thought of an answer */}
           <button
             type="button"
             onClick={handleToggleThinkFirstMode}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border select-none ${
+            aria-pressed={thinkFirstMode}
+            className={`self-end h-9 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between gap-2 cursor-pointer border select-none ${
               thinkFirstMode
-                ? "bg-indigo-600/20 text-indigo-300 border-indigo-500/40 shadow-sm"
+                ? "bg-indigo-600/20 text-indigo-300 border-indigo-500/40"
                 : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
             }`}
             title={
               thinkFirstMode
-                ? "نمط التفكير المسبق مفعّل: الخيارات محجوبة لتشجيع التفكير الذاتي"
-                : "نمط التفكير المسبق معطّل: الخيارات ظاهرة مباشرة كاختيار من متعدد"
+                ? "فكّر أولًا مفعّل: خيارات الاختيار من متعدد محجوبة حتى تفكر في الإجابة"
+                : "فكّر أولًا معطّل: الخيارات ظاهرة مباشرة"
             }
           >
-            <div className="flex items-center gap-1.5">
-              {thinkFirstMode ? (
-                <Brain className="w-3.5 h-3.5 text-indigo-400" />
-              ) : (
-                <Eye className="w-3.5 h-3.5 text-slate-500" />
-              )}
-              <span>نمط التفكير المسبق</span>
-            </div>
-            <div
+            <span>فكّر أولًا</span>
+            <span
               className={`w-7 h-4 rounded-full p-0.5 transition-colors flex items-center ${
                 thinkFirstMode ? "bg-indigo-600 justify-start" : "bg-slate-700 justify-end"
               }`}
             >
-              <div className="w-3 h-3 rounded-full bg-white shadow-xs" />
-            </div>
-          </button>
-
-          {/* Difficulty Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <span className="text-xs font-bold text-slate-400 px-1 flex items-center gap-1 shrink-0">
-              <Filter className="w-3.5 h-3.5 text-slate-500" />
-              <span>الصعوبة:</span>
+              <span className="w-3 h-3 rounded-full bg-white" />
             </span>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedDifficulty("all");
-                setCurrentIndex(0);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                selectedDifficulty === "all"
-                  ? "bg-indigo-600 text-white shadow-md"
-                  : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-              }`}
-            >
-              الكل ({normalizedQuestions.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedDifficulty("easy");
-                setCurrentIndex(0);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                selectedDifficulty === "easy"
-                  ? "bg-emerald-600 text-white shadow-md"
-                  : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-              }`}
-            >
-              سهل ({normalizedQuestions.filter((q) => q.difficulty === "easy").length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedDifficulty("medium");
-                setCurrentIndex(0);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                selectedDifficulty === "medium"
-                  ? "bg-amber-600 text-white shadow-md"
-                  : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-              }`}
-            >
-              متوسط ({normalizedQuestions.filter((q) => q.difficulty === "medium").length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedDifficulty("hard");
-                setCurrentIndex(0);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                selectedDifficulty === "hard"
-                  ? "bg-rose-600 text-white shadow-md"
-                  : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-              }`}
-            >
-              صعب ({normalizedQuestions.filter((q) => q.difficulty === "hard").length})
-            </button>
-          </div>
+          </button>
         </div>
       </div>
-
-      {/* 1.25. Question Kind Strip (only for banks that mix kinds) */}
-      {isMixedBank && (
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar p-2 bg-slate-900/80 border border-slate-800 rounded-2xl">
-          {(["all", ...presentKinds] as const).map((k) => {
-            const isSelected = selectedKind === k;
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => {
-                  setSelectedKind(k);
-                  setCurrentIndex(0);
-                }}
-                aria-pressed={isSelected}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                  isSelected
-                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/30 ring-1 ring-cyan-400/40"
-                    : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-                }`}
-              >
-                <span>{k === "all" ? "كل الأنواع" : KIND_LABELS[k]}</span>
-                <span className="font-mono text-[10px] opacity-80">
-                  ({k === "all" ? normalizedQuestions.length : kindCounts[k]})
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 1.5. Section Filter Strip (if lesson has sections) */}
-      {lesson.sections && lesson.sections.length > 1 && (
-        <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-2">
-          <div className="flex items-center justify-between text-xs px-1">
-            <span className="font-bold text-slate-300 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-purple-400" />
-              <span>{sectionFilterLabel}</span>
-            </span>
-            {selectedSectionId !== "all" && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSectionId("all");
-                  setCurrentIndex(0);
-                  if (onClearTargetSection) onClearTargetSection();
-                }}
-                className="text-[11px] text-purple-400 hover:text-purple-300 underline font-semibold cursor-pointer"
-              >
-                عرض أسئلة كل الأقسام
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedSectionId("all");
-                setCurrentIndex(0);
-                if (onClearTargetSection) onClearTargetSection();
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                selectedSectionId === "all"
-                  ? "bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400/40"
-                  : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-              }`}
-            >
-              <span>جميع الأقسام</span>
-              <span className="font-mono text-[10px] opacity-80">({normalizedQuestions.length})</span>
-            </button>
-
-            {lesson.sections.map((sec) => {
-              const count = sectionCounts[sec.id] || 0;
-              const isSelected = selectedSectionId === sec.id;
-              return (
-                <button
-                  key={sec.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedSectionId(sec.id);
-                    setCurrentIndex(0);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 max-w-[240px] truncate ${
-                    isSelected
-                      ? "bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400/40"
-                      : "bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
-                  }`}
-                  title={sec.title}
-                >
-                  <span className="font-mono text-[11px] opacity-75 shrink-0">#{sectionNums.get(sec.id)}</span>
-                  <span className="truncate">{sec.title.replace(/^[0-9.]+\s*/, "")}</span>
-                  <span className="font-mono text-[10px] opacity-80 shrink-0">({count})</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* 2. Questions Jump Strip (Quick Numbers) */}
       {totalFiltered > 0 && (
@@ -793,7 +699,7 @@ export function DeepComprehensionViewer({
                 onChange={handleBlankChange}
               />
             ) : (
-              <p className="text-base sm:text-lg font-bold text-white leading-relaxed whitespace-pre-line">
+              <p className="q-text text-base sm:text-lg font-bold text-white leading-relaxed whitespace-pre-line">
                 {currentQ.question}
               </p>
             )}
@@ -895,7 +801,7 @@ export function DeepComprehensionViewer({
                       {OPTION_LETTERS[optIdx] || optIdx + 1}
                     </span>
 
-                    <span className="flex-1 mt-0.5 font-normal sm:font-medium">
+                    <span className="q-text flex-1 mt-0.5 font-normal sm:font-medium">
                       {optText}
                     </span>
 
@@ -998,7 +904,7 @@ export function DeepComprehensionViewer({
                     )}
                     {currentQ.kind === "essay" && (
                       <>
-                        <div className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-950/60 border border-emerald-500/25 text-slate-200">
+                        <div className="q-text p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-950/60 border border-emerald-500/25 text-slate-200">
                           <div className="font-bold text-emerald-300 mb-1.5">الإجابة النموذجية:</div>
                           {formatExplanationContent(currentQ.modelAnswer || currentQ.answer)}
                         </div>
@@ -1017,7 +923,7 @@ export function DeepComprehensionViewer({
                           <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
                           <span>الإجابة النموذجية والشرح والتحليل المعمق</span>
                         </div>
-                        <div className="text-slate-300">
+                        <div className="q-text text-slate-300">
                           {formatExplanationContent(currentQ.depthExplanation || (currentQ as any).explanation)}
                         </div>
                       </div>

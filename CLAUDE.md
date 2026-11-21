@@ -45,7 +45,8 @@ book-sources/
       official/  book.json, glossary.json, acronyms.json, curriculum-baseline-spec.json,
                  official-lessons/, official-assessments/lesson-X-Y.json (= the "assessments" companion)
       authored/  deep-questions/chapter-N/lesson-X-Y.json, simulators.json, storylines/chapter-N.json,
-                 committee-questions.json
+                 committee-questions.json,
+                 trap-questions/chapter-N.json  («تركات الامتحان» tab on the exams page; src/lib/traps.ts validates)
     06-build-modules/chapterN.mjs → scripts/generate-official-curriculum.mjs --part <key>
     07-validation/                               SHA-256 hashes + provenance (scripts/generate-source-manifest.mjs)
     companions/<slug>/01-pdf-document/           companion book PDFs

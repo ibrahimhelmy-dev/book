@@ -13,6 +13,7 @@
  *     assessments/<lessonId>.json    official booklet questions (companion "assessments")
  *     deep/<lessonKey>.json          authored deep questions ("1-1", "1-review")
  *     practice/<lessonKey>.json      deep questions converted to strict 4-option practice items
+ *     traps/<chapterId>.json         «تركات الامتحان» (authored trap MCQs per chapter)
  *     exams-index.json               counts for the exams page
  *     glossary.json  acronyms.json  simulators.json  search-lessons.json
  *     storylines/<lessonId>.json
@@ -26,6 +27,7 @@ import path from "path";
 import crypto from "crypto";
 import { listParts, getSources, readCatalog } from "../sources-config.mjs";
 import { enrichDeepQuestions } from "../../src/lib/practice";
+import { convertTrapQuestions, type RawTrapQuestion, type TrapQuestion } from "../../src/lib/traps";
 import type { Chapter, Lesson, GlossaryTerm, AcronymTerm, SimulatorMeta, BookStats } from "../../src/types";
 import type {
   Catalog,
@@ -94,6 +96,33 @@ function hashTree(dir: string, hash: crypto.Hash) {
 
 function lessonKeyOf(lesson: { number: string }) {
   return lesson.number;
+}
+
+/** authored/trap-questions/chapter-N.json → validated TrapQuestion lists, in chapter order. */
+function readTrapQuestions(trapDir: string, chapters: Chapter[]): [Chapter, TrapQuestion[]][] {
+  if (!fs.existsSync(trapDir)) return [];
+  const result: [Chapter, TrapQuestion[]][] = [];
+  for (const chapter of chapters) {
+    const file = path.join(trapDir, `${chapter.id}.json`);
+    if (!fs.existsSync(file)) continue;
+    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as RawTrapQuestion[];
+    const info = {
+      id: chapter.id,
+      number: chapter.number,
+      title: chapter.title,
+      lessons: chapter.lessons.map((l) => ({
+        id: l.id,
+        number: l.number,
+        title: l.title,
+        pages: l.source?.pages ?? [],
+        conceptIds: (l.keyConcepts ?? []).flatMap((c) => (c.id ? [c.id] : [])),
+      })),
+    };
+    result.push([chapter, convertTrapQuestions(raw, info)]);
+  }
+  const unknown = fs.readdirSync(trapDir).filter((f) => !chapters.some((c) => f === `${c.id}.json`));
+  if (unknown.length) throw new Error(`${trapDir}: files for unknown chapters: ${unknown.join(", ")}`);
+  return result;
 }
 
 function readDeepQuestions(deepDir: string, chapters: Chapter[]): Record<string, DeepChallengingQuestion[]> {
@@ -188,6 +217,61 @@ function buildPresentationDecks(key: string, dir: string, lessonsById: Map<strin
   return decks;
 }
 
+/**
+ * «فكر كمهندس» model answers are not printed in the book, so they live in authored/engineer-answers.json
+ * and are attached to each lesson's engineerChallenge here (the UI marks them as 💡 توضيح إضافي).
+ * Every answer must point at an existing lesson and at step numbers that exist in its challenge.
+ */
+function mergeEngineerAnswers(key: string, file: string, lessonsById: Map<string, Lesson>) {
+  if (!fs.existsSync(file)) return;
+  const data = readJson<{ answers: { lessonId: string; steps: { number: number; answer: string }[]; decision?: string }[] }>(
+    file,
+    { answers: [] },
+  );
+  const errors: string[] = [];
+  for (const entry of data.answers) {
+    const challenge = lessonsById.get(entry.lessonId)?.engineerChallenge;
+    if (!challenge) {
+      errors.push(`${entry.lessonId}: no such lesson or it has no engineerChallenge`);
+      continue;
+    }
+    const known = new Set(challenge.steps.map((s) => s.number));
+    const bad = entry.steps.filter((s) => !known.has(s.number) || !s.answer?.trim());
+    if (bad.length) errors.push(`${entry.lessonId}: invalid or empty answer for step(s) ${bad.map((s) => s.number).join(", ")}`);
+    challenge.modelAnswer = { contentOrigin: "authored", steps: entry.steps, ...(entry.decision ? { decision: entry.decision } : {}) };
+  }
+  if (errors.length) throw new Error(`${key}: invalid ${path.relative(process.cwd(), file)}\n  ${errors.join("\n  ")}`);
+}
+
+/**
+ * «⭐ تأمل ذاتي» / «⚡ تحدّ نفسك» model answers are not printed in the book either; they live in
+ * authored/challenge-answers.json and are attached to lesson.challengeYourself.modelAnswers.
+ * An answer may only exist for a question the lesson actually has.
+ */
+function mergeChallengeAnswers(key: string, file: string, lessonsById: Map<string, Lesson>) {
+  if (!fs.existsSync(file)) return;
+  const data = readJson<{ answers: { lessonId: string; reflect?: string; challenge?: string }[] }>(file, { answers: [] });
+  const errors: string[] = [];
+  for (const entry of data.answers) {
+    const cy = lessonsById.get(entry.lessonId)?.challengeYourself;
+    if (!cy) {
+      errors.push(`${entry.lessonId}: no such lesson or it has no challengeYourself`);
+      continue;
+    }
+    for (const field of ["reflect", "challenge"] as const) {
+      if (entry[field] !== undefined && (!cy[field] || !entry[field]?.trim())) {
+        errors.push(`${entry.lessonId}: ${field} answer is empty or the lesson has no ${field} question`);
+      }
+    }
+    cy.modelAnswers = {
+      contentOrigin: "authored",
+      ...(entry.reflect ? { reflect: entry.reflect } : {}),
+      ...(entry.challenge ? { challenge: entry.challenge } : {}),
+    };
+  }
+  if (errors.length) throw new Error(`${key}: invalid ${path.relative(process.cwd(), file)}\n  ${errors.join("\n  ")}`);
+}
+
 interface PartBuildResult {
   stats?: BookStats;
 }
@@ -211,6 +295,8 @@ function buildPart(entry: { key: string; grade: any; book: any; part: any }): Pa
   const simulators = readJson<SimulatorMeta[]>(sources.simulatorsFile, []);
   const deepByKey = readDeepQuestions(sources.deepQuestionsDir, chapters);
   const lessonsById = new Map<string, Lesson>(chapters.flatMap((c) => c.lessons.map((l) => [l.id, l] as const)));
+  mergeEngineerAnswers(key, sources.engineerAnswersFile, lessonsById);
+  mergeChallengeAnswers(key, sources.challengeAnswersFile, lessonsById);
 
   const decks = buildPresentationDecks(key, sources.presentationsDir, lessonsById);
 
@@ -302,12 +388,27 @@ function buildPart(entry: { key: string; grade: any; book: any; part: any }): Pa
       },
     };
   });
+  // «تركات الامتحان» (authored trap questions, one file per chapter)
+  const trapsIndex: ExamsIndex["traps"] = [];
+  for (const [chapter, list] of readTrapQuestions(sources.trapQuestionsDir, chapters)) {
+    writeJson(`${key}/traps/${chapter.id}.json`, list);
+    trapsIndex.push({
+      chapterId: chapter.id,
+      chapterNumber: chapter.number,
+      chapterTitle: chapter.title,
+      count: list.length,
+      lessons: Object.fromEntries(chapter.lessons.map((l) => [l.id, list.filter((q) => q.lessonIds.includes(l.id)).length])),
+    });
+  }
+
   const examsIndex: ExamsIndex = {
     practice: practiceIndex,
     official: officialIndex,
+    traps: trapsIndex,
     totals: {
       practice: practiceIndex.reduce((n, l) => n + l.count, 0),
       official: officialIndex.reduce((n, l) => n + l.count, 0),
+      traps: trapsIndex.reduce((n, c) => n + c.count, 0),
     },
   };
   writeJson(`${key}/exams-index.json`, examsIndex);

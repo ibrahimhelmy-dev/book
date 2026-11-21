@@ -3,6 +3,7 @@ import { fetchJson } from "@/lib/fetch-json";
 import { dataUrl } from "@/content/paths";
 import type { EnrichedSimpleQuestion } from "@/lib/practice";
 import type { OfficialAssessmentQuestion, OfficialLessonAssessments } from "@/types/assessments";
+import type { TrapQuestion } from "@/lib/traps";
 
 export type BankStatus = "idle" | "loading" | "ready" | "error";
 
@@ -95,6 +96,18 @@ export function useOfficialBank(
   );
   const { status, files, error, retry } = useLessonFiles<OfficialLessonAssessments>(urls);
   const questions = useMemo(() => files.flatMap((f) => f.questions), [files]);
+  return { status, questions, error, retry };
+}
+
+/** «تركات الامتحان» (traps/<chapterId>.json) for the given chapters; null = not needed yet. */
+export function useTrapBank(partKey: string, chapterIds: string[] | null): BankState<TrapQuestion> {
+  const idsKey = chapterIds ? chapterIds.join("|") : null;
+  const urls = useMemo(
+    () => (idsKey === null ? null : idsKey ? idsKey.split("|").map((id) => dataUrl(partKey, `traps/${id}.json`)) : []),
+    [partKey, idsKey]
+  );
+  const { status, files, error, retry } = useLessonFiles<TrapQuestion[]>(urls);
+  const questions = useMemo(() => files.flat(), [files]);
   return { status, questions, error, retry };
 }
 

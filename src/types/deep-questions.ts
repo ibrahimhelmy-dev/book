@@ -84,6 +84,8 @@ export interface DeepChallengingQuestion {
   trapType?: string;
   isExamLikely?: boolean;
   isUnitReview?: boolean;
+  /** «تركات امتحان»: an authored trap question (authored/trap-questions) shown as its own difficulty level. */
+  isExamTrick?: boolean;
   source?: ProvenanceSource & {
     curriculumEvidence?: string | CurriculumEvidenceItem;
   };
