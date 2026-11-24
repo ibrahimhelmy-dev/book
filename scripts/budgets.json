@@ -3,7 +3,7 @@
   "chunkRaw": 307200,
   "dataFileRaw": 409600,
   "dataFileRawOverrides": {
-    "/deep/\\d+-review\\.json$": 614400
+    "/deep/\\d+-review\\.json$": 819200
   },
   "routes": {
     "/page": 153600
