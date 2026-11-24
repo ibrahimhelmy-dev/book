@@ -78,6 +78,10 @@ export interface DeepChallengingQuestion {
   scenario?: string;
   correctAnswer?: number; // 0 | 1 | 2 | 3
   correctAnswerText?: string;
+  /** Authored hint: a guiding question that does not give the answer away (shown as «توضيح إضافي»). */
+  hint?: string;
+  /** Built by build:data when there is no authored hint: concept names + source pages. */
+  bookHint?: { terms: string[]; pages: number[] };
   misconceptionTrap?: string;
   depthExplanation?: string;
   teacherDiscussionPrompt?: string;

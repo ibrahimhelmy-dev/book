@@ -162,6 +162,16 @@ if (chapterDirs.length > 0) {
         }
         const where = `Deep question ${q.id || `#${qIdx + 1}`} in lesson ${lessonNum}`;
         const nonEmpty = (s) => typeof s === 'string' && s.trim().length > 0;
+        // Optional authored hint: one guiding sentence, no pointer to the book/lesson/table/figure
+        if (q.hint !== undefined) {
+          if (!nonEmpty(q.hint)) {
+            logError(`${where} has an empty hint (remove the field or write one).`);
+          } else if (q.hint.trim().split(/s+/).length > 25) {
+            logError(`${where} hint is longer than 25 words.`);
+          } else if (/الدرس|الدروس|الكتاب(?!ة)|الوحدة|جدول|الشكل|d+-d+/.test(q.hint)) {
+            logError(`${where} hint refers to the lesson/book/table/figure: '${q.hint}'`);
+          }
+        }
         if (q.type === 'true_false') {
           // options ["صواب", "خطأ"]; a false statement must carry its correction
           if (!Array.isArray(q.options) || q.options.join('|') !== 'صواب|خطأ') {

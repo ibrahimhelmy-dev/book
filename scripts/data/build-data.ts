@@ -28,7 +28,7 @@ import crypto from "crypto";
 import { listParts, getSources, readCatalog } from "../sources-config.mjs";
 import { enrichDeepQuestions } from "../../src/lib/practice";
 import { convertTrapQuestions, type RawTrapQuestion, type TrapQuestion } from "../../src/lib/traps";
-import type { Chapter, Lesson, GlossaryTerm, AcronymTerm, SimulatorMeta, BookStats } from "../../src/types";
+import type { Chapter, Lesson, GlossaryTerm, AcronymTerm, SimulatorMeta, BookStats, QuestionItem } from "../../src/types";
 import type {
   Catalog,
   CatalogPart,
@@ -44,9 +44,10 @@ import type { LessonStoryline } from "../../src/types/storyline";
 import type { EnglishLesson, EnglishLessonSource } from "../../src/types/english";
 import type { PresentationDeck, PresentationPlan } from "../../src/types/presentation";
 import { auditPresentationPlan, buildPresentationDeck, draftPresentationPlan } from "../../src/lib/presentation";
+import { buildBookHint, type HintConcept } from "../../src/lib/hints";
 
 /** Bump when the output format changes so content hashes (and offline packs) invalidate. */
-const DATA_FORMAT_VERSION = 1;
+const DATA_FORMAT_VERSION = 2;
 const OUT_ROOT = path.resolve("public", "data");
 
 const written = new Set<string>();
@@ -154,6 +155,44 @@ function readDeepQuestions(deepDir: string, chapters: Chapter[]): Record<string,
     }));
   }
   return byKey;
+}
+
+/**
+ * Adds the book hint (concept names + pages) to every deep question without an authored `hint`.
+ * The answer texts it must not give away: the correct option, the correction, the blank answers.
+ */
+function withBookHints(list: DeepChallengingQuestion[], conceptsById: Map<string, HintConcept>): DeepChallengingQuestion[] {
+  return list.map((q) => {
+    if (typeof q.hint === "string" && q.hint.trim()) return q;
+    const concepts = (q.conceptIds || []).map((id) => conceptsById.get(id)).filter((c): c is HintConcept => !!c);
+    const isMcq = q.type !== "true_false" && q.type !== "fill_blank" && q.type !== "essay";
+    const answers =
+      q.type === "true_false"
+        ? [q.correction || ""]
+        : q.type === "fill_blank"
+          ? (q.blanks || []).flatMap((b) => [b.answer, ...(b.accept || [])])
+          : q.type === "essay"
+            ? []
+            : [q.correctAnswerText || q.answer];
+    const stem = isMcq ? [q.question, ...(q.options || [])].join(" ") : q.question;
+    const bookHint = buildBookHint({ concepts, pages: q.source?.pages || [], stem, answers });
+    return bookHint ? { ...q, bookHint } : q;
+  });
+}
+
+/** Lesson (textbook) questions: the same book hint, for those that carry concept ids or source pages. */
+function withQuizBookHints(list: QuestionItem[], conceptsById: Map<string, HintConcept>): QuestionItem[] {
+  return list.map((q) => {
+    const concepts = (q.conceptIds || []).map((id) => conceptsById.get(id)).filter((c): c is HintConcept => !!c);
+    if (concepts.length === 0 && !q.source?.pages?.length) return q;
+    const optionText = (id: string) => q.options?.find((o) => o.id === id)?.text || id;
+    const correct = q.correctAnswer;
+    const answers =
+      typeof correct === "string" ? [optionText(correct)] : Array.isArray(correct) ? correct.map(optionText) : Object.values(correct || {});
+    const stem = [q.questionText, ...(q.options || []).map((o) => o.text)].join(" ");
+    const hint = buildBookHint({ concepts, pages: q.source?.pages || [], stem, answers });
+    return hint ? { ...q, bookHint: hint } : q;
+  });
 }
 
 function computeStats(chapters: Chapter[], glossary: GlossaryTerm[], acronyms: AcronymTerm[], simulators: SimulatorMeta[]): BookStats {
@@ -308,15 +347,23 @@ function buildPart(entry: { key: string; grade: any; book: any; part: any }): Pa
   const contentHash = hash.digest("hex").slice(0, 16);
 
   // Lessons
-  for (const lesson of lessonsById.values()) writeJson(`${key}/lessons/${lesson.id}.json`, lesson);
+  const conceptsById = new Map<string, HintConcept>(
+    chapters.flatMap((c) =>
+      c.lessons.flatMap((l) => (l.keyConcepts || []).filter((k) => k.id).map((k) => [k.id!, { termAr: k.termAr, termEn: k.termEn }] as const))
+    )
+  );
+  for (const lesson of lessonsById.values()) {
+    writeJson(`${key}/lessons/${lesson.id}.json`, { ...lesson, questions: withQuizBookHints(lesson.questions || [], conceptsById) });
+  }
   for (const deck of decks) writeJson(`${key}/presentations/${deck.lessonId}.json`, deck);
 
   // Deep + practice questions
+  // Practice items (and the timed exams built from them) carry no hints; only the deep banks do.
   const practice = enrichDeepQuestions(deepByKey, chapters);
   const deepQuestionCounts: Record<string, number> = {};
   for (const [lessonKey, list] of Object.entries(deepByKey)) {
     deepQuestionCounts[lessonKey] = list.length;
-    writeJson(`${key}/deep/${lessonKey}.json`, list);
+    writeJson(`${key}/deep/${lessonKey}.json`, withBookHints(list, conceptsById));
     writeJson(`${key}/practice/${lessonKey}.json`, practice.filter((q) => q.lessonKey === lessonKey));
   }
 

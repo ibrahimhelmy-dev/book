@@ -131,6 +131,8 @@ export interface QuestionItem {
   matchingPairs?: { id: string; left: string; right: string }[];
   correctAnswer: string | string[] | Record<string, string>;
   explanation?: string;
+  /** Built by build:data from conceptIds + source.pages (concept names that don't give the answer away). */
+  bookHint?: { terms: string[]; pages: number[] };
   marks?: number;
   rubricCriteria?: string[];
   source?: ProvenanceSource;

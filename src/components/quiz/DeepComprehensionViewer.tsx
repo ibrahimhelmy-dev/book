@@ -30,6 +30,8 @@ import {
 } from "@/lib/deep-question-kinds";
 import { EssayChecklist, EssayDraft, FillBlankActions, FillBlankSentence, TrueFalseButtons } from "./DeepAnswerPanels";
 import { sectionNumbers } from "@/lib/sections";
+import { questionHint } from "@/lib/hints";
+import { QuestionHintButton, QuestionHintPanel } from "./QuestionHint";
 
 interface Props {
   lesson: Lesson;
@@ -241,6 +243,10 @@ export function DeepComprehensionViewer({
   const [essayDrafts, setEssayDrafts] = useState<Record<number, string>>({});
   const [essayRevealed, setEssayRevealed] = useState<Record<number, boolean>>({});
   const [essayCovered, setEssayCovered] = useState<Record<number, number[]>>({});
+  // Hints: open now, and "used" = opened before the first answer (marked «بتلميح», not penalised)
+  const [hintOpen, setHintOpen] = useState<Record<number, boolean>>({});
+  const [hintUsed, setHintUsed] = useState<Record<number, boolean>>({});
+  const [onlyHinted, setOnlyHinted] = useState<boolean>(false);
 
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -318,9 +324,11 @@ export function DeepComprehensionViewer({
       const matchDiff = selectedDifficulty === "all" || q.difficulty === selectedDifficulty;
       const matchSec = selectedSectionId === "all" || q.assignedSectionId === selectedSectionId;
       const matchKind = selectedKind === "all" || q.kind === selectedKind;
-      return matchDiff && matchSec && matchKind;
+      const matchHint = !onlyHinted || !!hintUsed[q.originalIndex];
+      return matchDiff && matchSec && matchKind && matchHint;
     });
-  }, [normalizedQuestions, selectedDifficulty, selectedSectionId, selectedKind]);
+  }, [normalizedQuestions, selectedDifficulty, selectedSectionId, selectedKind, onlyHinted, hintUsed]);
+  const hintedCount = normalizedQuestions.filter((q) => hintUsed[q.originalIndex]).length;
 
   const totalFiltered = filteredQuestions.length;
   const safeIndex = Math.min(currentIndex, Math.max(0, totalFiltered - 1));
@@ -332,6 +340,15 @@ export function DeepComprehensionViewer({
       ...prev,
       [currentQ.originalIndex]: true,
     }));
+  };
+
+  const handleToggleHint = () => {
+    if (!currentQ) return;
+    const qKey = currentQ.originalIndex;
+    const opening = !hintOpen[qKey];
+    setHintOpen((prev) => ({ ...prev, [qKey]: opening }));
+    // Only a hint opened before the first answer counts as «بتلميح»
+    if (opening && statusOf(currentQ) === null) setHintUsed((prev) => ({ ...prev, [qKey]: true }));
   };
 
   const handleSelectOption = (optText: string) => {
@@ -399,6 +416,8 @@ export function DeepComprehensionViewer({
     setEssayDrafts(without);
     setEssayRevealed(without);
     setEssayCovered(without);
+    setHintOpen(without);
+    setHintUsed(without);
   };
 
   const handleNavigate = (newIdx: number) => {
@@ -492,6 +511,7 @@ export function DeepComprehensionViewer({
     essay: "اكتب إجابتك أو صُغها في ذهنك، ثم اعرض الإجابة النموذجية وعلّم النقاط التي ذكرتها.",
   };
 
+  const currentHint = currentQ ? questionHint(currentQ) : null;
   const diffConf = currentQ ? DIFFICULTY_CONFIG[currentQ.difficulty] || DIFFICULTY_CONFIG.medium : DIFFICULTY_CONFIG.medium;
 
   return (
@@ -579,6 +599,25 @@ export function DeepComprehensionViewer({
             </span>
           </button>
         </div>
+        {(hintedCount > 0 || onlyHinted) && (
+          <button
+            type="button"
+            onClick={() => {
+              setOnlyHinted((v) => !v);
+              setCurrentIndex(0);
+            }}
+            aria-pressed={onlyHinted}
+            className={`h-8 px-3 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 border cursor-pointer transition-all ${
+              onlyHinted
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+            }`}
+            title="اعرض الأسئلة التي حللتها بعد فتح التلميح فقط"
+          >
+            <Lightbulb className="w-3.5 h-3.5" />
+            <span>حللتها بتلميح ({hintedCount})</span>
+          </button>
+        )}
       </div>
 
       {/* 2. Questions Jump Strip (Quick Numbers) */}
@@ -608,10 +647,13 @@ export function DeepComprehensionViewer({
                 key={idx}
                 type="button"
                 onClick={() => handleNavigate(idx)}
-                className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center text-xs transition-all cursor-pointer ${btnClass}`}
-                title={`سؤال ${idx + 1}`}
+                className={`relative w-8 h-8 rounded-xl shrink-0 flex items-center justify-center text-xs transition-all cursor-pointer ${btnClass}`}
+                title={hintUsed[q.originalIndex] ? `سؤال ${idx + 1} (بتلميح)` : `سؤال ${idx + 1}`}
               >
                 {idx + 1}
+                {hintUsed[q.originalIndex] && (
+                  <span aria-hidden className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-slate-900" />
+                )}
               </button>
             );
           })}
@@ -656,6 +698,8 @@ export function DeepComprehensionViewer({
                   <span>{currentQ.cognitiveLevel}</span>
                 </span>
               )}
+
+              <QuestionHintButton hint={currentHint} open={!!hintOpen[currentQ.originalIndex]} onToggle={handleToggleHint} />
             </div>
 
             {/* Top Quick Navigation Buttons (Immovable at Top) */}
@@ -704,6 +748,8 @@ export function DeepComprehensionViewer({
               </p>
             )}
           </div>
+
+          <QuestionHintPanel hint={currentHint} open={!!hintOpen[currentQ.originalIndex]} />
 
           {/* Answer area by kind: True/False, fill-blank check, essay draft, or 4 Options / Active Recall Thinking Station */}
           {currentQ.kind === "true_false" ? (
@@ -881,7 +927,15 @@ export function DeepComprehensionViewer({
                     </div>
                   </div>
                   <div className="text-xs sm:text-sm leading-relaxed space-y-2 flex-1">
-                    <div className="font-black text-sm sm:text-base">{feedback.title}</div>
+                    <div className="font-black text-sm sm:text-base flex items-center gap-2 flex-wrap">
+                      <span>{feedback.title}</span>
+                      {hintUsed[currentQ.originalIndex] && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                          <Lightbulb className="w-3 h-3" />
+                          بتلميح
+                        </span>
+                      )}
+                    </div>
                     {!isCorrect && (currentQ.kind === "mcq" || currentQ.kind === "true_false") && (
                       <div className="text-slate-300">
                         <span className="font-bold text-white">الإجابة الصحيحة: </span>

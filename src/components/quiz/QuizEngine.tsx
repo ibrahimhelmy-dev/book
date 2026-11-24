@@ -20,6 +20,7 @@ import { saveQuizScore } from "@/lib/storage";
 import { usePart } from "@/components/layout/PartProvider";
 import { fireConfetti } from "@/lib/confetti";
 import { MobileQuizNavigation } from "./MobileQuizNavigation";
+import { formatBookHint, questionHint } from "@/lib/hints";
 
 interface Props {
   lessonId: string;
@@ -86,6 +87,7 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
   // Ensure currentIndex stays within bounds if category filter changes
   const safeIndex = Math.min(currentIndex, Math.max(0, totalQuestions - 1));
   const currentQ = filteredQuestions[safeIndex] || questions[0];
+  const currentHint = currentQ ? questionHint(currentQ) : null;
 
   const handleSelectOption = (questionId: string, value: string) => {
     if (submitted) return;
@@ -450,7 +452,7 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
                 <span>{revealedAnswers[currentQ.id] ? "إخفاء الإجابة" : "إظهار الإجابة والشرح 👁️"}</span>
               </button>
 
-              {currentQ.explanation && (
+              {questionHint(currentQ) && (
                 <button
                   type="button"
                   onClick={() => handleToggleHint(currentQ.id)}
@@ -464,10 +466,11 @@ export function QuizEngine({ lessonId, questions, title, subtitle }: Props) {
           </div>
 
           {/* Hint callout if toggled */}
-          {showHint[currentQ.id] && currentQ.explanation && (
+          {/* Hint (concept names + pages from the book); the full explanation stays behind «إظهار الإجابة والشرح» */}
+          {showHint[currentQ.id] && currentHint && (
             <div className="w-full p-4 bg-amber-950/40 border border-amber-500/40 rounded-2xl mb-5 text-xs text-amber-200 leading-relaxed animate-fadeIn box-border">
-              <strong className="block mb-1 text-amber-300 font-bold">💡 تلميح للمساعدة في الحل:</strong>
-              {currentQ.explanation}
+              <strong className="block mb-1 text-amber-300 font-bold">💡 تلميح</strong>
+              {currentHint.kind === "book" ? formatBookHint(currentHint) : currentHint.text}
             </div>
           )}
 
